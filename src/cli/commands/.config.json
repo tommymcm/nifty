@@ -1,0 +1,9 @@
+{
+  "doxygenPath": "./build/docs/xml",
+  "caseSensitive": false,
+  "defaultLimit": 100,
+  "outputFormat": "text",
+  "colorEnabled": true,
+  "cacheEnabled": true,
+  "verbose": false
+}

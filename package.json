@@ -1,12 +1,13 @@
 {
   "name": "nifty",
   "module": "index.ts",
-  "type": "module",
-  "private": true,
   "devDependencies": {
-    "@types/bun": "^1.3.3"
+    "@types/bun": "^1.3.3",
+    "@types/ink": "^2.0.3"
   },
   "peerDependencies": {
     "typescript": "^5"
-  }
+  },
+  "private": true,
+  "type": "module"
 }
