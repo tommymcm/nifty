@@ -10,6 +10,9 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "nifty/strip.hh"
+
+using namespace nifty;
 using namespace llvm;
 
 static cl::opt<std::string> opt_inpath(cl::Positional,
@@ -33,10 +36,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  for (auto &F : *module)
-    for (auto &BB : F)
-      for (auto &I : BB)
-        I.setMetadata(LLVMContext::MD_tbaa, nullptr);
+  strip(*module.get(), { LLVMContext::MD_tbaa });
 
   if (outpath.empty()) {
     module->print(outs(), nullptr);
