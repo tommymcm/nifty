@@ -1,0 +1,39 @@
+cmake_minimum_required(VERSION 3.20)
+project(llvm-utils VERSION 0.1.0 LANGUAGES C CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+find_package(LLVM REQUIRED CONFIG)
+
+message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+
+include(AddLLVM)
+
+list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
+
+include_directories(${LLVM_INCLUDE_DIRS})
+add_definitions(${LLVM_DEFINITIONS})
+add_definitions(-fno-rtti)
+
+llvm_map_components_to_libnames(LLVM_LIBS
+  Core
+  IRReader
+  BitWriter
+  Support
+)
+
+add_subdirectory(src)
+
+configure_file(
+  ${CMAKE_SOURCE_DIR}/enable.in
+  ${CMAKE_BINARY_DIR}/enable
+  @ONLY
+)
+
+install(
+  FILES ${CMAKE_BINARY_DIR}/enable
+  DESTINATION ${CMAKE_SOURCE_DIR}
+)
