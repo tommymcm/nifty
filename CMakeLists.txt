@@ -18,13 +18,9 @@ include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 add_definitions(-fno-rtti)
 
-llvm_map_components_to_libnames(LLVM_LIBS
-  Core
-  IRReader
-  BitWriter
-  Support
-)
-
+include_directories(include)
+add_subdirectory(include)
+add_subdirectory(lib)
 add_subdirectory(src)
 
 configure_file(
