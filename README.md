@@ -1,2 +1,1 @@
-# llvm-utils
-LLVM utilities that I use often
+A collection of nifty LLVM utilities that I've amassed over the years.
