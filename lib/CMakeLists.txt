@@ -3,4 +3,5 @@ add_llvm_library(
 
   STATIC
   strip.cc
+  extract.cc
 )
