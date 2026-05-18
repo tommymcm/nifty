@@ -11,7 +11,9 @@
 #include <llvm/Support/ToolOutputFile.h>
 #include <llvm/Support/raw_ostream.h>
 
+#include "nifty/assert.hh"
 #include "nifty/extract.hh"
+#include "nifty/print.hh"
 #include "nifty/strip.hh"
 
 using namespace nifty;
@@ -36,6 +38,11 @@ cl::opt<bool> opt_verbose("v",
                           cl::desc("verbose output"),
                           cl::sub(cl::SubCommand::getAll()));
 
+// -------- Extract options -------- //
+cl::opt<std::string> opt_extract_function("func",
+                                          cl::desc("function to extract from"),
+                                          cl::sub(cmd_extract));
+
 // ====---- Dispatch ----==== //
 int main(int argc, char **argv) {
   cl::ParseCommandLineOptions(argc, argv, "Nifty LLVM utilities\n");
@@ -52,8 +59,19 @@ int main(int argc, char **argv) {
 
   if (cmd_extract) {
     ExtractOptions options = { .verbose = opt_verbose };
-    for (auto &func : *module.get())
-      extract(ArrayRef<BasicBlock *>({ &func.getEntryBlock() }), options);
+
+    Function *func = nullptr;
+    if (opt_extract_function.getNumOccurrences() > 0)
+      func = module->getFunction(opt_extract_function);
+    else
+      func = &*module->begin();
+
+    if (not func) {
+      println("ERROR: failed to find function");
+      return 1;
+    }
+
+    extract(ArrayRef<BasicBlock *>({ &func->getEntryBlock() }), options);
   } else if (cmd_strip_tbaa) {
     strip(*module.get(), { LLVMContext::MD_tbaa });
   }
