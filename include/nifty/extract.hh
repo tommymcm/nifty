@@ -2,6 +2,7 @@
 #define NIFTY_EXTRACT_H
 
 #include <llvm/ADT/ArrayRef.h>
+#include <llvm/Analysis/RegionInfo.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Function.h>
 
@@ -23,6 +24,11 @@ struct ExtractOptions {
  */
 llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
                         ExtractOptions options);
+
+/**
+ * Extract single-entry-single-exit region into its own function.
+ */
+llvm::Function *extract(llvm::Region *region, ExtractOptions options);
 
 } // namespace nifty
 

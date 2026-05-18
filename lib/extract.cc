@@ -324,4 +324,30 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   return out_function;
 }
 
+llvm::Function *extract(llvm::Region *region, ExtractOptions options) {
+
+  // Construct the basic block array for extraction.
+  llvm::SmallVector<llvm::BasicBlock *, 0> blocks;
+
+  // The first element in the array MUST be the entry block.
+  llvm::BasicBlock *entry_block = region->getEntry();
+  NIFTY_ASSERT(entry_block, "Could not find single-entry block");
+  blocks.push_back(entry_block);
+
+  // Append all other blocks.
+  for (llvm::BasicBlock *block : region->blocks()) {
+    // Skip the entry block, since it's already been added.
+    if (block == entry_block)
+      continue;
+
+    blocks.push_back(block);
+  }
+
+  // Call into the extract helper.
+  llvm::Function *out_function = extract(blocks, options);
+
+  // Return the extracted function.
+  return out_function;
+}
+
 } // namespace nifty
