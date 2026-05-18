@@ -35,6 +35,12 @@ llvm::Function *extract(llvm::Region *region, ExtractOptions options);
  */
 void extract(llvm::RegionInfo *region_tree, ExtractOptions options);
 
+/**
+ * Extract all single-entry-single-exit regions from function into their own
+ * functions.
+ */
+void extract_regions(llvm::Function *function, ExtractOptions options);
+
 } // namespace nifty
 
 #endif // NIFTY_EXTRACT_H

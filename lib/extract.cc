@@ -4,6 +4,8 @@
 #include "nifty/print.hh"
 
 #include <llvm/ADT/SetVector.h>
+#include <llvm/Analysis/DominanceFrontier.h>
+#include <llvm/Analysis/PostDominators.h>
 #include <llvm/IR/CFG.h>
 #include <llvm/IR/Dominators.h>
 #include <llvm/IR/GlobalVariable.h>
@@ -364,11 +366,26 @@ static void walk_region_tree(const ExtractOptions &options,
 }
 
 void extract(llvm::RegionInfo *region_tree, ExtractOptions options) {
-
   // Extract all regions from the region tree.
   walk_region_tree(options, region_tree->getTopLevelRegion());
 
   return;
+}
+
+void extract_regions(llvm::Function *function, ExtractOptions options) {
+  // Construct the region info (program structure tree).
+  llvm::DominatorTree dom_tree(*function);
+
+  llvm::PostDominatorTree post_dom_tree(*function);
+
+  llvm::DominanceFrontier dom_frontier;
+  dom_frontier.analyze(dom_tree);
+
+  llvm::RegionInfo region_info;
+  region_info.recalculate(*function, &dom_tree, &post_dom_tree, &dom_frontier);
+
+  // Extract region tree.
+  extract(&region_info, options);
 }
 
 } // namespace nifty

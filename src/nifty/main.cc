@@ -1,8 +1,6 @@
 #include <string>
 
 #include <llvm/ADT/ArrayRef.h>
-#include <llvm/Analysis/DominanceFrontier.h>
-#include <llvm/Analysis/PostDominators.h>
 #include <llvm/Bitcode/BitcodeWriter.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Module.h>
@@ -63,28 +61,21 @@ int main(int argc, char **argv) {
     ExtractOptions options = { .verbose = opt_verbose };
 
     // Find the function.
-    Function *func = nullptr;
-    if (opt_extract_function.getNumOccurrences() > 0)
-      func = module->getFunction(opt_extract_function);
-    else
-      func = &*module->begin();
+    Function *function = nullptr;
+    if (opt_extract_function.getNumOccurrences() > 0) {
+      function = module->getFunction(opt_extract_function);
+    } else {
+      function = &*module->begin();
+    }
 
     // Inform the user if we couldn't find their favorite function...
-    if (not func) {
-      println("ERROR: failed to find function");
+    if (not function) {
+      println("ERROR: failed to find function (", opt_extract_function, ")");
       return 1;
     }
 
-    // Construct the region info.
-    DominatorTree dom_tree(*func);
-    PostDominatorTree post_dom_tree(*func);
-    DominanceFrontier dom_frontier;
-    dom_frontier.analyze(dom_tree);
-    RegionInfo region_info;
-    region_info.recalculate(*func, &dom_tree, &post_dom_tree, &dom_frontier);
-
-    // Extract all SESEs.
-    extract(&region_info, options);
+    // Extract all SESEs from the function.
+    extract_regions(function, options);
 
   } else if (cmd_strip_tbaa) {
     strip(*module.get(), { LLVMContext::MD_tbaa });
