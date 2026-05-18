@@ -283,6 +283,11 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
     }
   }
 
+  // Remap values.
+  llvm::ValueMapper mapper(vmap);
+  mapper.remapFunction(*out_function);
+
+  // TODO
   // Store live-out values to global variable before function exit.
   for (llvm::BasicBlock &block : *out_function) {
     llvm::Instruction *terminator = block.getTerminator();
