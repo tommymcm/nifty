@@ -5,6 +5,7 @@
 
 #include <llvm/ADT/SetVector.h>
 #include <llvm/IR/CFG.h>
+#include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/Instructions.h>
 
 namespace nifty {
@@ -114,12 +115,7 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
     }
   }
 
-  // Determine the output module.
-  llvm::Module *out_module = options.out_module;
-  if (not out_module)
-    out_module = module;
-
-  // Create globals for the input and output values.
+  // Dump analysis information.
   if (options.verbose) {
     println("==== LIVE IN  ====");
     for (llvm::Value *value : live_in) {
@@ -140,9 +136,43 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
     println();
   }
 
-  // Create a new function with the extracted blocks.
+  // Determine the output module.
+  llvm::Module *out_module = options.out_module;
+  if (not out_module)
+    out_module = module;
 
-  return nullptr;
+  // Create globals for the input and output values.
+  llvm::DenseMap<llvm::Value *, llvm::GlobalVariable *> globals;
+  for (auto &values : { live_in, live_out }) {
+    for (llvm::Value *value : values) {
+      // Create the global variable.
+      auto *global = new llvm::GlobalVariable(
+          *out_module,
+          value->getType(),
+          /* constant? */ false,
+          llvm::GlobalVariable::LinkageTypes::AvailableExternallyLinkage,
+          /* initializer */ nullptr);
+
+      if (options.verbose) {
+        println("CREATE GLOBAL");
+        println("  ", *global);
+        println("  FOR ", value_name(*value));
+      }
+
+      // Map the original value to the new global.
+      globals.try_emplace(value, global);
+    }
+  }
+
+  // Create a new function with the extracted blocks.
+  llvm::Function *out_function = llvm::Function::Create(
+      function->getFunctionType(),
+      llvm::GlobalVariable::LinkageTypes::ExternalLinkage,
+      function->getName(), // NOTE: consumers should rename.
+      out_module);
+
+  // Return the output function.
+  return out_function;
 }
 
 } // namespace nifty
