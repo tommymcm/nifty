@@ -1,8 +1,11 @@
 #include "nifty/extract.hh"
 #include "nifty/assert.hh"
 #include "nifty/cast.hh"
+#include "nifty/print.hh"
 
 #include <llvm/ADT/SetVector.h>
+#include <llvm/IR/CFG.h>
+#include <llvm/IR/Instructions.h>
 
 namespace nifty {
 
@@ -36,10 +39,18 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
 
   for (llvm::BasicBlock *block : blocks) {
     for (llvm::Instruction &inst : *block) {
+
+      // Get the correct value operand iterator.
+      auto op_iterator = inst.operands();
+      if (auto *phi = dyn_cast<llvm::PHINode>(&inst))
+        op_iterator = phi->incoming_values();
+
       // Check the operands to see if any were defined outside.
-      for (llvm::Value *operand : inst.operand_values()) {
-        // Skip constants.
-        if (llvm::isa<llvm::Constant>(operand))
+      for (llvm::Use &use : op_iterator) {
+        llvm::Value *operand = use.get();
+
+        // Skip constants and basic blocks.
+        if (isa<llvm::Constant>(operand) or isa<llvm::BasicBlock>(operand))
           continue;
 
         // Skip operands we've already seen.
@@ -56,7 +67,9 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
         live_in.push_back(operand);
       }
 
-      // Check if the defined value is used outside the block set.
+      // Check if the defined value is:
+      //  1. used outside the block set
+      //  2. used in an exit terminator
       for (llvm::Use &use : inst.uses()) {
         auto *user_inst = dyn_cast<llvm::Instruction>(use.getUser());
 
@@ -64,9 +77,35 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
         if (not user_inst)
           continue;
 
-        // If the user is in the set of blocks, skip it.
+        // Fetch the user block.
         llvm::BasicBlock *user_block = user_inst->getParent();
-        if (blockset.contains(user_block))
+
+        // If the user is non-local, mark value as live-out.
+        if (not blockset.contains(user_block))
+          live_out.push_back(&inst);
+
+        // Is the user a terminator?
+        bool terminator = user_inst == user_block->getTerminator();
+
+        // If the user is NOT a terminator, skip it.
+        if (not terminator)
+          continue;
+
+        // If the terminator has a target outside the blockset, mark value as
+        // live-out.
+        // NOTE: This is necessary to handle non-local control dependences.
+        bool local_jump = true;
+        for (llvm::BasicBlock *succ_block : llvm::successors(user_block)) {
+          // Skip local blocks.
+          if (blockset.contains(succ_block))
+            continue;
+
+          local_jump = false;
+          break;
+        }
+
+        // If the jump is local, skip the use.
+        if (local_jump)
           continue;
 
         // Otherwise, this is a live-out value.
@@ -75,11 +114,33 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
     }
   }
 
-  // Create globals for the input and output values.
-  // llvm::GlobalVariable in(module);
-  // llvm::GlobalVariable out(module);
+  // Determine the output module.
+  llvm::Module *out_module = options.out_module;
+  if (not out_module)
+    out_module = module;
 
-  // Create a new function.
+  // Create globals for the input and output values.
+  if (options.verbose) {
+    println("==== LIVE IN  ====");
+    for (llvm::Value *value : live_in) {
+      if (isa<llvm::Argument>(value))
+        println("  ", value_name(*value));
+      else
+        println(*value);
+    }
+    println();
+
+    println("==== LIVE OUT ====");
+    for (llvm::Value *value : live_out) {
+      if (isa<llvm::Argument>(value))
+        println("  ", value_name(*value));
+      else
+        println(*value);
+    }
+    println();
+  }
+
+  // Create a new function with the extracted blocks.
 
   return nullptr;
 }

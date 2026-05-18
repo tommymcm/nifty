@@ -10,6 +10,10 @@ namespace nifty {
 struct ExtractOptions {
   /** Preserve the value of constant globals? */
   bool keep_const_init = false;
+  /** Module to construct the extracted function(s). */
+  llvm::Module *out_module = nullptr;
+  /** Enable verbose debug printing. */
+  bool verbose = false;
 };
 
 /**
