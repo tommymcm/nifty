@@ -1,6 +1,8 @@
 #include <string>
 
 #include <llvm/ADT/ArrayRef.h>
+#include <llvm/Analysis/DominanceFrontier.h>
+#include <llvm/Analysis/PostDominators.h>
 #include <llvm/Bitcode/BitcodeWriter.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Module.h>
@@ -60,18 +62,33 @@ int main(int argc, char **argv) {
   if (cmd_extract) {
     ExtractOptions options = { .verbose = opt_verbose };
 
+    // Find the function.
     Function *func = nullptr;
     if (opt_extract_function.getNumOccurrences() > 0)
       func = module->getFunction(opt_extract_function);
     else
       func = &*module->begin();
 
+    // Inform the user if we couldn't find their favorite function...
     if (not func) {
       println("ERROR: failed to find function");
       return 1;
     }
 
-    extract(ArrayRef<BasicBlock *>({ &func->getEntryBlock() }), options);
+    // Construct the region info.
+    DominatorTree dom_tree(*func);
+    PostDominatorTree post_dom_tree(*func);
+    DominanceFrontier dom_frontier;
+    dom_frontier.analyze(dom_tree);
+    RegionInfo region_info;
+    region_info.recalculate(*func, &dom_tree, &post_dom_tree, &dom_frontier);
+
+    // Get the top-level region.
+    Region *region = region_info.getTopLevelRegion();
+
+    // Extract!
+    extract(region, options);
+
   } else if (cmd_strip_tbaa) {
     strip(*module.get(), { LLVMContext::MD_tbaa });
   }
