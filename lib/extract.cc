@@ -5,8 +5,12 @@
 
 #include <llvm/ADT/SetVector.h>
 #include <llvm/IR/CFG.h>
+#include <llvm/IR/Dominators.h>
 #include <llvm/IR/GlobalVariable.h>
+#include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/Module.h>
+#include <llvm/Transforms/Utils/Cloning.h>
 
 namespace nifty {
 
@@ -24,10 +28,12 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
     return nullptr;
 
   // Fetch the parent context.
-  llvm::Function *function = blocks.front()->getParent();
+  llvm::BasicBlock *first_block = blocks.front();
+  llvm::Function *function = first_block->getParent();
   NIFTY_ASSERT(function, "Block does not have parent function!");
   llvm::Module *module = function->getParent();
   NIFTY_ASSERT(module, "Function does not have parent module!");
+  llvm::LLVMContext &context = module->getContext();
 
   // Construct the blockset.
   llvm::SetVector<llvm::BasicBlock *> blockset(blocks.begin(), blocks.end());
@@ -37,6 +43,7 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   // live-out valies are defined in the blocks, but used outside.
   llvm::SmallVector<llvm::Value *, 0> live_in, live_out;
   llvm::DenseSet<llvm::Value *> seen;
+  llvm::SmallVector<llvm::BasicBlockEdge> exit_edges;
 
   for (llvm::BasicBlock *block : blocks) {
     for (llvm::Instruction &inst : *block) {
@@ -101,8 +108,11 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
           if (blockset.contains(succ_block))
             continue;
 
+          // Register the non-local exit edge.
+          exit_edges.emplace_back(user_block, succ_block);
+
+          // Mark the jump as non-local.
           local_jump = false;
-          break;
         }
 
         // If the jump is local, skip the use.
@@ -141,10 +151,24 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   if (not out_module)
     out_module = module;
 
+  // Ensure that the LLVMContext of the input and output modules match.
+  NIFTY_ASSERT(&context == &out_module->getContext(),
+               "mismatched LLVMContext between input/output modules");
+
   // Create globals for the input and output values.
   llvm::DenseMap<llvm::Value *, llvm::GlobalVariable *> globals;
   for (auto &values : { live_in, live_out }) {
     for (llvm::Value *value : values) {
+      // Skip arguments.
+      if (isa<llvm::Argument>(value))
+        continue;
+
+      // Clone global values.
+      if (isa<llvm::GlobalValue>(value)) {
+        // TODO
+        continue;
+      }
+
       // Create the global variable.
       auto *global = new llvm::GlobalVariable(
           *out_module,
@@ -160,7 +184,8 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
       }
 
       // Map the original value to the new global.
-      globals.try_emplace(value, global);
+      auto [_it, fresh] = globals.try_emplace(value, global);
+      NIFTY_ASSERT(fresh, "Failed to record global!");
     }
   }
 
@@ -170,6 +195,102 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
       llvm::GlobalVariable::LinkageTypes::ExternalLinkage,
       function->getName(), // NOTE: consumers should rename.
       out_module);
+
+  // Create a value mapper.
+  llvm::ValueToValueMapTy vmap;
+
+  // Create the entry block.
+  auto *entry_block = llvm::BasicBlock::Create(context, "entry", out_function);
+
+  // Create a builder.
+  llvm::IRBuilder<> builder(entry_block);
+
+  // Jump into the first block in the array, assumed to be the single-entry.
+  builder.CreateBr(first_block);
+
+  // Populate the entry block with global variable loads.
+  for (llvm::Value *orig_value : live_in) {
+
+    // Load the value from its global.
+    llvm::GlobalVariable *global = globals.lookup(orig_value);
+    if (not global)
+      continue;
+
+    if (options.verbose) {
+      println("LOAD GLOBAL");
+      println("  FOR ", *orig_value);
+      println("  VAR ", *global);
+    }
+
+    auto *load_value = builder.CreateLoad(orig_value->getType(),
+                                          global,
+                                          orig_value->getName());
+
+    if (options.verbose) {
+      println("  VAL ", *load_value);
+    }
+
+    // Map the original value to the load.
+    vmap[orig_value] = load_value;
+  }
+
+  // For each non-local branch target, create an exit block.
+  llvm::DenseMap<llvm::BasicBlockEdge, llvm::BasicBlock *> exit_blocks;
+  for (const llvm::BasicBlockEdge &edge : exit_edges) {
+    const llvm::BasicBlock *start_block = edge.getStart();
+    const llvm::BasicBlock *end_block = edge.getEnd();
+
+    auto *exit_block = llvm::BasicBlock::Create(
+        context,
+        "exit." + start_block->getName() + "." + end_block->getName(),
+        out_function);
+
+    auto [_it, fresh] = exit_blocks.try_emplace(edge, exit_block);
+    NIFTY_ASSERT(fresh, "Cloned the same exit edge twice, something is off");
+
+    // Insert a default return value.
+    // NOTE: Alternatively, we could call exit() with an unreachable.
+    llvm::Type *ret_type = out_function->getReturnType();
+    llvm::Value *ret_value = llvm::Constant::getNullValue(ret_type);
+    builder.SetInsertPoint(exit_block);
+    builder.CreateRet(ret_value);
+  }
+
+  // Clone over all of the other blocks.
+  for (llvm::BasicBlock *orig_block : blocks) {
+    // Clone the basic block.
+    llvm::BasicBlock *clone_block =
+        llvm::CloneBasicBlock(orig_block,
+                              vmap,
+                              /* suffix */ "",
+                              /* function */ out_function);
+
+    vmap[orig_block] = clone_block;
+
+    // Patch up any of the exiting edges.
+    llvm::Instruction *terminator = clone_block->getTerminator();
+    for (llvm::BasicBlock *succ_block : llvm::successors(orig_block)) {
+      llvm::BasicBlockEdge edge(orig_block, succ_block);
+      llvm::BasicBlock *exit_block = exit_blocks.lookup(edge);
+      if (not exit_block)
+        continue;
+
+      terminator->replaceSuccessorWith(succ_block, exit_block);
+    }
+  }
+
+  // Store live-out values to global variable before function exit.
+  for (llvm::BasicBlock &block : *out_function) {
+    llvm::Instruction *terminator = block.getTerminator();
+
+    bool is_exit = isa<llvm::ReturnInst>(terminator)
+                   or isa<llvm::ResumeInst>(terminator)
+                   or isa<llvm::UnreachableInst>(terminator);
+
+    // Skip terminators that don't exit the function.
+    if (not is_exit)
+      continue;
+  }
 
   // Return the output function.
   return out_function;
