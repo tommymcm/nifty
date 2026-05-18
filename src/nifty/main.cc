@@ -83,11 +83,8 @@ int main(int argc, char **argv) {
     RegionInfo region_info;
     region_info.recalculate(*func, &dom_tree, &post_dom_tree, &dom_frontier);
 
-    // Get the top-level region.
-    Region *region = region_info.getTopLevelRegion();
-
-    // Extract!
-    extract(region, options);
+    // Extract all SESEs.
+    extract(&region_info, options);
 
   } else if (cmd_strip_tbaa) {
     strip(*module.get(), { LLVMContext::MD_tbaa });

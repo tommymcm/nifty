@@ -30,6 +30,11 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
  */
 llvm::Function *extract(llvm::Region *region, ExtractOptions options);
 
+/**
+ * Extract all single-entry-single-exit regions into their own functions.
+ */
+void extract(llvm::RegionInfo *region_tree, ExtractOptions options);
+
 } // namespace nifty
 
 #endif // NIFTY_EXTRACT_H

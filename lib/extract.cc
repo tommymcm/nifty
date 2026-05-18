@@ -350,4 +350,25 @@ llvm::Function *extract(llvm::Region *region, ExtractOptions options) {
   return out_function;
 }
 
+static void walk_region_tree(const ExtractOptions &options,
+                             llvm::Region *region,
+                             unsigned depth = 0) {
+  // Extract this region.
+  extract(region, options);
+
+  // Recurse on all subregions.
+  for (std::unique_ptr<llvm::Region> &subregion : *region)
+    walk_region_tree(options, subregion.get(), depth + 1);
+
+  return;
+}
+
+void extract(llvm::RegionInfo *region_tree, ExtractOptions options) {
+
+  // Extract all regions from the region tree.
+  walk_region_tree(options, region_tree->getTopLevelRegion());
+
+  return;
+}
+
 } // namespace nifty
