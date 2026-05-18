@@ -289,16 +289,35 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
 
   // TODO
   // Store live-out values to global variable before function exit.
+  llvm::DominatorTree dom_tree(*out_function);
   for (llvm::BasicBlock &block : *out_function) {
+    // Fetch the terminator.
     llvm::Instruction *terminator = block.getTerminator();
 
+    // Skip terminators that don't exit the function.
     bool is_exit = isa<llvm::ReturnInst>(terminator)
                    or isa<llvm::ResumeInst>(terminator)
                    or isa<llvm::UnreachableInst>(terminator);
-
-    // Skip terminators that don't exit the function.
     if (not is_exit)
       continue;
+
+    // Store all live-outs that dominate this location.
+    builder.SetInsertPoint(terminator);
+    for (llvm::Value *orig_value : live_out) {
+      // Fetch the cloned value.
+      llvm::Value *clone_value = vmap.lookup(orig_value);
+      auto *clone_inst = dyn_cast_or_null<llvm::Instruction>(clone_value);
+      NIFTY_ASSERT(clone_inst, "live-out was not cloned ", *orig_value);
+
+      // Skip live-out values that don't dominate this exit.
+      if (not dom_tree.dominates(clone_inst, terminator))
+        continue;
+
+      // Store the cloned value to its global.
+      llvm::GlobalVariable *global = globals.lookup(orig_value);
+      NIFTY_ASSERT(global, "Could not find global for ", *orig_value);
+      builder.CreateStore(clone_value, global);
+    }
   }
 
   // Return the output function.
