@@ -243,6 +243,8 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   }
 
   // For each non-local branch target, create an exit block.
+  if (options.verbose)
+    println("==== CREATE EXIT BLOCKS ====");
   llvm::DenseMap<llvm::BasicBlockEdge, llvm::BasicBlock *> exit_blocks;
   for (const llvm::BasicBlockEdge &edge : exit_edges) {
     const llvm::BasicBlock *start_block = edge.getStart();
@@ -265,6 +267,8 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   }
 
   // Clone over all of the other blocks.
+  if (options.verbose)
+    println("==== CLONE BLOCKS ====");
   for (llvm::BasicBlock *orig_block : blocks) {
     // Clone the basic block.
     llvm::BasicBlock *clone_block =
@@ -288,11 +292,14 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   }
 
   // Remap values.
+  if (options.verbose)
+    println("==== REMAP VALUES ====");
   llvm::ValueMapper mapper(vmap);
   mapper.remapFunction(*out_function);
 
-  // TODO
   // Store live-out values to global variable before function exit.
+  if (options.verbose)
+    println("==== STORE LIVE-OUTS ====");
   llvm::DominatorTree dom_tree(*out_function);
   for (llvm::BasicBlock &block : *out_function) {
     // Fetch the terminator.
