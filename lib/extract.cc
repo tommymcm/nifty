@@ -165,8 +165,12 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
 
       // Clone global values.
       if (isa<llvm::GlobalValue>(value)) {
-        // TODO
-        continue;
+        // If we are emitting to the same module, there's no need to clone.
+        if (out_module == module)
+          continue;
+
+        // TODO: Implement global value cloning.
+        NIFTY_UNREACHABLE("NYI: global value cloning ");
       }
 
       // Create the global variable.
