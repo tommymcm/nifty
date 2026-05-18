@@ -211,9 +211,6 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   // Create a builder.
   llvm::IRBuilder<> builder(entry_block);
 
-  // Jump into the first block in the array, assumed to be the single-entry.
-  builder.CreateBr(first_block);
-
   // Populate the entry block with global variable loads.
   for (llvm::Value *orig_value : live_in) {
     {
@@ -237,6 +234,9 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
     // Map the original value to the load.
     vmap[orig_value] = load_value;
   }
+
+  // Jump into the first block in the array, assumed to be the single-entry.
+  builder.CreateBr(first_block);
 
   // For each non-local branch target, create an exit block.
   debugln("==== CREATE EXIT BLOCKS ====");
@@ -296,6 +296,7 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   for (llvm::BasicBlock &block : *out_function) {
     // Fetch the terminator.
     llvm::Instruction *terminator = block.getTerminator();
+    NIFTY_ASSERT(terminator, "Block has no terminator ", block);
 
     // Skip terminators that don't exit the function.
     bool is_exit = isa<llvm::ReturnInst>(terminator)
