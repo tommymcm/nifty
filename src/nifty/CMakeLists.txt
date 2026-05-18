@@ -13,8 +13,8 @@ llvm_map_components_to_libnames(LLVM_LIBS
 target_link_libraries(
   nifty
   PRIVATE
-  ${LLVM_LIBS}
   nifty_core
+  ${LLVM_LIBS}
 )
 
 install(
