@@ -14,10 +14,15 @@ include(AddLLVM)
 
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 
+# Compiler options
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 add_definitions(-fno-rtti)
 
+# Global output directory (all executables in <build>/bin/
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+# Subdirectories
 include_directories(include)
 add_subdirectory(include)
 add_subdirectory(lib)
