@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
 
   LLVMContext context;
   SMDiagnostic error;
-  auto module = parseIRFile(inpath, error, context);
+  std::unique_ptr<Module> module = parseIRFile(inpath, error, context);
   if (!module) {
     error.print(argv[0], errs());
     return 1;
