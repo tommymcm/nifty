@@ -38,6 +38,8 @@ cl::opt<bool> opt_verbose("v",
                           cl::desc("verbose output"),
                           cl::sub(cl::SubCommand::getAll()));
 
+bool nifty::glob_verbosity = opt_verbose;
+
 // -------- Extract options -------- //
 cl::opt<std::string> opt_extract_function("func",
                                           cl::desc("function to extract from"),
@@ -58,7 +60,7 @@ int main(int argc, char **argv) {
   }
 
   if (cmd_extract) {
-    ExtractOptions options = { .verbose = opt_verbose };
+    ExtractOptions options;
 
     // Find the function.
     Function *function = nullptr;

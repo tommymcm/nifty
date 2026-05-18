@@ -6,6 +6,8 @@
 
 namespace nifty {
 
+extern bool glob_verbosity;
+
 using Colors = llvm::raw_ostream::Colors;
 enum class Style { NORMAL = 0, BOLD, RESET };
 
@@ -79,6 +81,32 @@ inline void warnln(Ts const &...args) {
 template <class... Ts>
 inline void warn(Ts const &...args) {
   fwarn(llvm::errs(), args...);
+}
+
+// ====---- Debugging ----==== //
+inline void fdebug(llvm::raw_ostream &out) {}
+
+template <class T, class... Ts>
+inline void fdebug(llvm::raw_ostream &out, T const &first, Ts const &...rest) {
+  if (glob_verbosity) {
+    out << first;
+    fdebug(out, rest...);
+  }
+}
+
+template <class... Ts>
+inline void fdebugln(llvm::raw_ostream &out, Ts const &...args) {
+  fdebug(out, args..., '\n');
+}
+
+template <class... Ts>
+inline void debugln(Ts const &...args) {
+  fdebugln(llvm::errs(), args...);
+}
+
+template <class... Ts>
+inline void debug(Ts const &...args) {
+  fdebug(llvm::errs(), args...);
 }
 
 // ====---- Helpers ----==== //
