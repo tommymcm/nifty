@@ -216,6 +216,10 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
 
   // Populate the entry block with global variable loads.
   for (llvm::Value *orig_value : live_in) {
+    if (options.verbose) {
+      println("LOAD GLOBAL");
+      println("  FOR ", *orig_value);
+    }
 
     // Load the value from its global.
     llvm::GlobalVariable *global = globals.lookup(orig_value);
@@ -223,8 +227,6 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
       continue;
 
     if (options.verbose) {
-      println("LOAD GLOBAL");
-      println("  FOR ", *orig_value);
       println("  VAR ", *global);
     }
 
