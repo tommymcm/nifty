@@ -1,5 +1,6 @@
 #include <string>
 
+#include <llvm/ADT/ArrayRef.h>
 #include <llvm/Bitcode/BitcodeWriter.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Module.h>
@@ -10,6 +11,7 @@
 #include <llvm/Support/ToolOutputFile.h>
 #include <llvm/Support/raw_ostream.h>
 
+#include "nifty/extract.hh"
 #include "nifty/strip.hh"
 
 using namespace nifty;
@@ -30,11 +32,15 @@ cl::opt<std::string> opt_outpath("o",
                                  cl::sub(cmd_extract),
                                  cl::sub(cmd_strip_tbaa));
 
+cl::opt<bool> opt_verbose("v",
+                          cl::desc("verbose output"),
+                          cl::sub(cl::SubCommand::getAll()));
+
+// ====---- Dispatch ----==== //
 int main(int argc, char **argv) {
   cl::ParseCommandLineOptions(argc, argv, "Nifty LLVM utilities\n");
 
   StringRef inpath = opt_inpath;
-  StringRef outpath = opt_outpath;
 
   LLVMContext context;
   SMDiagnostic error;
@@ -45,13 +51,15 @@ int main(int argc, char **argv) {
   }
 
   if (cmd_extract) {
-
+    ExtractOptions options = { .verbose = opt_verbose };
+    for (auto &func : *module.get())
+      extract(ArrayRef<BasicBlock *>({ &func.getEntryBlock() }), options);
   } else if (cmd_strip_tbaa) {
     strip(*module.get(), { LLVMContext::MD_tbaa });
-  } else {
-    cl::PrintHelpMessage();
   }
 
+  // Handle output file, if needed.
+  StringRef outpath = opt_outpath;
   if (outpath.empty()) {
     module->print(outs(), nullptr);
   } else {
