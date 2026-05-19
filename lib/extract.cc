@@ -2,10 +2,9 @@
 #include "nifty/assert.hh"
 #include "nifty/cast.hh"
 #include "nifty/print.hh"
+#include "nifty/regions.hh"
 
 #include <llvm/ADT/SetVector.h>
-#include <llvm/Analysis/DominanceFrontier.h>
-#include <llvm/Analysis/PostDominators.h>
 #include <llvm/IR/CFG.h>
 #include <llvm/IR/Dominators.h>
 #include <llvm/IR/GlobalVariable.h>
@@ -379,21 +378,10 @@ void extract(llvm::Function *function, ExtractOptions options) {
   // Extract the selected region(s).
   if (options.regions) {
     // Construct the region info (program structure tree).
-    llvm::DominatorTree dom_tree(*function);
-
-    llvm::PostDominatorTree post_dom_tree(*function);
-
-    llvm::DominanceFrontier dom_frontier;
-    dom_frontier.analyze(dom_tree);
-
-    llvm::RegionInfo region_info;
-    region_info.recalculate(*function,
-                            &dom_tree,
-                            &post_dom_tree,
-                            &dom_frontier);
+    llvm::RegionInfo *region_info = regions(function);
 
     // Extract region tree.
-    extract(&region_info, options);
+    extract(region_info, options);
 
     return;
   }
