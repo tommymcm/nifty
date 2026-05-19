@@ -173,22 +173,22 @@ GumNode *build_region(
     // We will build the children first, and reorder them later.
     llvm::SmallVector<std::pair<GumNode *, unsigned>> ordered_children;
 
-    // Collect direct children, treating subregions as opaque.
-    llvm::RegionInfo *info = region->getRegionInfo();
+    // Build direct subregion children.
+    for (std::unique_ptr<llvm::Region> &sub_region : *region) {
+      unsigned index = rpo_index.lookup(sub_region->getEntry());
+      GumNode *child = build_region(sub_region.get(), rpo_index);
+      child->parent = node;
+      ordered_children.emplace_back(child, index);
+    }
+
+    // Build direct block children.
     for (llvm::BasicBlock *block : region->blocks()) {
-      unsigned index;
-      GumNode *child;
+      // Skip subregion entry blocks.
+      if (region->getSubRegionNode(block))
+        continue;
 
-      llvm::Region *sub_region = info->getRegionFor(block);
-      if (sub_region != region) {
-        index = rpo_index.lookup(sub_region->getEntry());
-        child = build_region(sub_region, rpo_index);
-      } else {
-        index = rpo_index.lookup(block);
-        child = new GumNode(block);
-      }
-
-      // Register the parent-child relationship.
+      unsigned index = rpo_index.lookup(block);
+      GumNode *child = new GumNode(block);
       child->parent = node;
       ordered_children.emplace_back(child, index);
     }
