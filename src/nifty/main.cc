@@ -12,6 +12,7 @@
 #include <llvm/Support/raw_ostream.h>
 
 #include "nifty/assert.hh"
+#include "nifty/diff.hh"
 #include "nifty/extract.hh"
 #include "nifty/print.hh"
 #include "nifty/strip.hh"
@@ -21,6 +22,7 @@ using namespace llvm;
 
 // ====---- Subcommands ----==== //
 cl::SubCommand cmd_extract("extract", "Extract parts of the IR");
+cl::SubCommand cmd_diff("diff", "SESE difference of two IRs");
 cl::SubCommand cmd_strip_tbaa("strip-tbaa", "Strip TBAA metadata");
 
 // ====---- Options ----==== //
@@ -28,12 +30,14 @@ cl::opt<std::string> opt_inpath( //
     cl::Positional,
     cl::desc("<input>"),
     cl::sub(cmd_extract),
+    cl::sub(cmd_diff),
     cl::sub(cmd_strip_tbaa));
 
 cl::opt<std::string> opt_outpath( //
     "o",
     cl::desc("output file"),
     cl::sub(cmd_extract),
+    cl::sub(cmd_diff),
     cl::sub(cmd_strip_tbaa));
 
 cl::opt<bool> opt_verbose( //
@@ -53,6 +57,27 @@ cl::opt<bool> opt_extract_regions( //
     "regions",
     cl::desc("extract all SESE regions"),
     cl::sub(cmd_extract));
+
+// -------- Diff options -------- //
+cl::opt<std::string> opt_diff_path( //
+    cl::Positional,
+    cl::desc("<other input>"),
+    cl::sub(cmd_diff));
+
+cl::opt<std::string> opt_diff_function( //
+    "func",
+    cl::desc("function to diff"),
+    cl::sub(cmd_diff));
+
+cl::opt<bool> opt_diff_refine_top_down( //
+    "refine-top-down",
+    cl::desc("refine matching with extra top-down passes"),
+    cl::sub(cmd_diff));
+
+cl::opt<bool> opt_diff_dump_gumtree( //
+    "dump-gumtree",
+    cl::desc("dump intermediate GumTree to stdout"),
+    cl::sub(cmd_diff));
 
 // ====---- Dispatch ----==== //
 int main(int argc, char **argv) {
@@ -89,6 +114,43 @@ int main(int argc, char **argv) {
 
     // Extract!
     extract(function, options);
+
+  } else if (cmd_diff) {
+    // Load the other module.
+    StringRef diffpath = opt_diff_path;
+    std::unique_ptr<Module> other_module =
+        parseIRFile(diffpath, error, context);
+    if (!module) {
+      error.print(argv[0], errs());
+      return 1;
+    }
+
+    // Find the function.
+    Function *function = nullptr;
+    if (opt_diff_function.getNumOccurrences() > 0) {
+      function = module->getFunction(opt_extract_function);
+    } else {
+      function = &*module->begin();
+    }
+
+    // Inform the user if we couldn't find their favorite function...
+    if (not function) {
+      println("ERROR: failed to find function (", opt_extract_function, ")");
+      return 1;
+    }
+
+    // Find the function in the other module.
+    StringRef function_name = function->getName();
+    Function *other_function = module->getFunction(function_name);
+    if (not other_function) {
+      println("ERROR: failed to find other function (", function_name, ")");
+      return 1;
+    }
+
+    // Compute and extract the diff.
+    DiffOptions options = { .refine_top_down = opt_diff_refine_top_down,
+                            .dump_gumtree = opt_diff_dump_gumtree };
+    diff(function, other_function, options);
 
   } else if (cmd_strip_tbaa) {
     strip(*module.get(), { LLVMContext::MD_tbaa });
