@@ -41,19 +41,19 @@ private:
   static uint64_t _compute_hash(llvm::BasicBlock *block) {
     uint64_t h = 0;
     for (llvm::Instruction &inst : *block)
-      _hash_add(h, inst.getOpcode());
+      h = _hash_add(h, inst.getOpcode());
     for (llvm::Instruction &inst : *block)
-      _hash_add(h, uint64_t(inst.getType()));
-    _hash_add(h, block->getTerminator()->getNumSuccessors());
-    _hash_add(h, block->isEntryBlock());
+      h = _hash_add(h, uint64_t(inst.getType()));
+    h = _hash_add(h, block->getTerminator()->getNumSuccessors());
+    h = _hash_add(h, block->isEntryBlock());
     // TODO: add PST-specific components
     return h;
   }
 
   static uint64_t _compute_hash(llvm::Region *region) {
     uint64_t h = _compute_hash(region->getEntry());
-    _hash_add(h, count_direct_blocks(region));
-    _hash_add(h, std::distance(region->begin(), region->end()));
+    h = _hash_add(h, count_direct_blocks(region));
+    h = _hash_add(h, std::distance(region->begin(), region->end()));
     return h;
   }
 };
