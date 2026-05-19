@@ -373,6 +373,7 @@ void top_down(GumNode *src, GumNode *dst, Matches &matches) {
     }
 
     // Heights are equal, try to match by subtree hash.
+    llvm::DenseSet<GumNode *> matched_dst;
     for (GumNode *s : src_nodes) {
       auto it = dst_by_hash.find(s->subtree_hash);
       if (it == dst_by_hash.end()) {
@@ -386,7 +387,9 @@ void top_down(GumNode *src, GumNode *dst, Matches &matches) {
 
       // Unique match at this height, commit entire isomorphic subtree.
       if (candidates.size() == 1) {
-        match_subtree(s, candidates.front(), matches);
+        GumNode *candidate = candidates.front();
+        match_subtree(s, candidate, matches);
+        matched_dst.insert(candidate);
         continue;
       }
 
@@ -394,12 +397,20 @@ void top_down(GumNode *src, GumNode *dst, Matches &matches) {
       GumNode *best = best_candidate(s, candidates, matches);
       if (best) {
         match_subtree(s, best, matches);
+        matched_dst.insert(best);
         continue;
       }
 
       // No match at this height, push children to try smaller subtrees.
       for (auto *c : s->children)
         push_open(c, src_queue);
+    }
+
+    // Dst unmatched => push its children
+    for (GumNode *d : dst_nodes) {
+      if (not matched_dst.contains(d))
+        for (GumNode *c : d->children)
+          push_open(c, dst_queue);
     }
 
     // Dequeue this height.
