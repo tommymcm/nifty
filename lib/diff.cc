@@ -352,17 +352,11 @@ void top_down(GumNode *src, GumNode *dst, Matches &matches) {
 
     // Always process the taller side down to match heights.
     if (src_max != dst_max) {
-      if (src_max > dst_max) {
-        for (auto *n : src_begin->second)
-          for (auto *c : n->children)
-            push_open(c, src_queue);
-        src_queue.erase(src_begin);
-      } else {
-        for (auto *n : dst_begin->second)
-          for (auto *c : n->children)
-            push_open(c, dst_queue);
-        dst_queue.erase(dst_begin);
-      }
+      auto &taller = src_max > dst_max ? src_queue : dst_queue;
+      for (auto *n : taller.begin()->second)
+        for (auto *c : n->children)
+          push_open(c, taller);
+      taller.erase(taller.begin());
       continue;
     }
 
