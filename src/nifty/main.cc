@@ -49,6 +49,11 @@ cl::opt<std::string> opt_extract_function( //
     cl::desc("function to extract from"),
     cl::sub(cmd_extract));
 
+cl::opt<bool> opt_extract_regions( //
+    "regions",
+    cl::desc("extract all SESE regions"),
+    cl::sub(cmd_extract));
+
 // ====---- Dispatch ----==== //
 int main(int argc, char **argv) {
   cl::ParseCommandLineOptions(argc, argv, "Nifty LLVM utilities\n");
@@ -64,7 +69,6 @@ int main(int argc, char **argv) {
   }
 
   if (cmd_extract) {
-    ExtractOptions options;
 
     // Find the function.
     Function *function = nullptr;
@@ -80,8 +84,11 @@ int main(int argc, char **argv) {
       return 1;
     }
 
-    // Extract all SESEs from the function.
-    extract_regions(function, options);
+    // Convert flags to library options.
+    ExtractOptions options = { .regions = opt_extract_regions };
+
+    // Extract!
+    extract(function, options);
 
   } else if (cmd_strip_tbaa) {
     strip(*module.get(), { LLVMContext::MD_tbaa });

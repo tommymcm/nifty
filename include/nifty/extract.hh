@@ -13,8 +13,8 @@ struct ExtractOptions {
   bool keep_const_init = false;
   /** Module to construct the extracted function(s). */
   llvm::Module *out_module = nullptr;
-  /** Enable verbose debug printing. */
-  bool verbose = false;
+  /** Extract all SESE regions */
+  bool regions = false;
 };
 
 /**
@@ -39,7 +39,7 @@ void extract(llvm::RegionInfo *region_tree, ExtractOptions options);
  * Extract all single-entry-single-exit regions from function into their own
  * functions.
  */
-void extract_regions(llvm::Function *function, ExtractOptions options);
+void extract(llvm::Function *function, ExtractOptions options);
 
 } // namespace nifty
 

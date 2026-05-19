@@ -374,20 +374,38 @@ void extract(llvm::RegionInfo *region_tree, ExtractOptions options) {
   return;
 }
 
-void extract_regions(llvm::Function *function, ExtractOptions options) {
-  // Construct the region info (program structure tree).
-  llvm::DominatorTree dom_tree(*function);
+void extract(llvm::Function *function, ExtractOptions options) {
 
-  llvm::PostDominatorTree post_dom_tree(*function);
+  // Extract the selected region(s).
+  if (options.regions) {
+    // Construct the region info (program structure tree).
+    llvm::DominatorTree dom_tree(*function);
 
-  llvm::DominanceFrontier dom_frontier;
-  dom_frontier.analyze(dom_tree);
+    llvm::PostDominatorTree post_dom_tree(*function);
 
-  llvm::RegionInfo region_info;
-  region_info.recalculate(*function, &dom_tree, &post_dom_tree, &dom_frontier);
+    llvm::DominanceFrontier dom_frontier;
+    dom_frontier.analyze(dom_tree);
 
-  // Extract region tree.
-  extract(&region_info, options);
+    llvm::RegionInfo region_info;
+    region_info.recalculate(*function,
+                            &dom_tree,
+                            &post_dom_tree,
+                            &dom_frontier);
+
+    // Extract region tree.
+    extract(&region_info, options);
+
+    return;
+  }
+
+  // By default, just extract the entire function.
+  llvm::SmallVector<llvm::BasicBlock *, 16> blocks;
+  for (llvm::BasicBlock &block : *function)
+    blocks.push_back(&block);
+
+  extract(blocks, options);
+
+  return;
 }
 
 } // namespace nifty
