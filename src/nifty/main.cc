@@ -24,26 +24,30 @@ cl::SubCommand cmd_extract("extract", "Extract parts of the IR");
 cl::SubCommand cmd_strip_tbaa("strip-tbaa", "Strip TBAA metadata");
 
 // ====---- Options ----==== //
-cl::opt<std::string> opt_inpath(cl::Positional,
-                                cl::desc("<input>"),
-                                cl::sub(cmd_extract),
-                                cl::sub(cmd_strip_tbaa));
+cl::opt<std::string> opt_inpath( //
+    cl::Positional,
+    cl::desc("<input>"),
+    cl::sub(cmd_extract),
+    cl::sub(cmd_strip_tbaa));
 
-cl::opt<std::string> opt_outpath("o",
-                                 cl::desc("output file"),
-                                 cl::sub(cmd_extract),
-                                 cl::sub(cmd_strip_tbaa));
+cl::opt<std::string> opt_outpath( //
+    "o",
+    cl::desc("output file"),
+    cl::sub(cmd_extract),
+    cl::sub(cmd_strip_tbaa));
 
-cl::opt<bool> opt_verbose("v",
-                          cl::desc("verbose output"),
-                          cl::sub(cl::SubCommand::getAll()));
+cl::opt<bool> opt_verbose( //
+    "v",
+    cl::desc("verbose output"),
+    cl::sub(cl::SubCommand::getAll()));
 
 bool nifty::glob_verbosity = opt_verbose;
 
 // -------- Extract options -------- //
-cl::opt<std::string> opt_extract_function("func",
-                                          cl::desc("function to extract from"),
-                                          cl::sub(cmd_extract));
+cl::opt<std::string> opt_extract_function( //
+    "func",
+    cl::desc("function to extract from"),
+    cl::sub(cmd_extract));
 
 // ====---- Dispatch ----==== //
 int main(int argc, char **argv) {
