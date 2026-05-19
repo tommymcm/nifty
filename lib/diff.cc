@@ -562,14 +562,6 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
   GumNode *src_tree = build_tree(src, src_regions),
           *dst_tree = build_tree(dst, dst_regions);
 
-  println("---- SRC TREE ----");
-  print(dst_tree);
-  println("----");
-
-  println("---- DST TREE ----");
-  print(src_tree);
-  println("----");
-
   // Run GumTree algorithm
   Matches matches;
   top_down(src_tree, dst_tree, matches);
@@ -578,7 +570,7 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
   // Compute the difference.
   GumDiff diff = compute_diff(src_tree, dst_tree, matches);
 
-  // Debug print.
+  // Output the GumTree, if requested.
   if (options.dump_gumtree) {
     println("---- SRC TREE ----");
     print(dst_tree);
@@ -586,6 +578,28 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
 
     println("---- DST TREE ----");
     print(src_tree);
+    println("----");
+  }
+
+  { // Debug print.
+    println("---- ADDED ----");
+    for (GumNode *node : diff.added)
+      print(node);
+    println("----");
+
+    println("---- REMOVED ----");
+    for (GumNode *node : diff.removed)
+      print(node);
+    println("----");
+
+    println("---- MODIFIED ----");
+    for (GumNode *node : diff.modified)
+      print(node);
+    println("----");
+
+    println("---- MOVED ----");
+    for (GumNode *node : diff.moved)
+      print(node);
     println("----");
   }
 
