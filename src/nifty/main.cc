@@ -141,7 +141,7 @@ int main(int argc, char **argv) {
 
     // Find the function in the other module.
     StringRef function_name = function->getName();
-    Function *other_function = module->getFunction(function_name);
+    Function *other_function = other_module->getFunction(function_name);
     if (not other_function) {
       println("ERROR: failed to find other function (", function_name, ")");
       return 1;
