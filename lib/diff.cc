@@ -62,7 +62,7 @@ struct GumNode {
   // Node information
   llvm::BasicBlock *block;
   BlockLabel label;
-  uint64_t subtree_hash = 0;
+  uint64_t subtree_hash;
   unsigned height = 0;
   int postorder_index = 0; // for ordering during maching
 
@@ -74,11 +74,15 @@ struct GumNode {
   GumNode *match = nullptr;
 
   /** Construct a node for the basic block */
-  GumNode(llvm::BasicBlock *block) : block{ block }, label(block), children{} {}
+  GumNode(llvm::BasicBlock *block) : block{ block }, label(block), children{} {
+    this->subtree_hash = uint64_t(this->label);
+  }
   GumNode(llvm::Region *region)
     : block{ region->getEntry() },
       label(region),
-      children{} {}
+      children{} {
+    this->subtree_hash = uint64_t(this->label);
+  }
 
   llvm::raw_ostream &print(llvm::raw_ostream &os, unsigned indent = 0) {
     std::string pad(indent * 2, ' ');
