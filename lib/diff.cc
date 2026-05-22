@@ -103,19 +103,20 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
   llvm::SmallVector<GumNode *> dirty = collect_dirty(tree.src, tree.dst);
 
   // Find the lowest common (matched) ancestor of all dirty nodes.
-  GumNode *src_lca = find_lca(tree.src, dirty);
-  GumNode *dst_lca = src_lca->match;
+  GumNode *lca = find_lca(tree.src, dirty);
 
-  println("==== LOWEST COMMON MATCHED ANCESTORS ====");
+  { // Debug print.
+    debugln("==== LOWEST COMMON MATCHED ANCESTORS ====");
 
-  println("---- SRC TREE (", src->getName(), ") ----");
-  print(src_lca);
-  println("----");
+    debugln("---- SRC TREE (", src->getName(), ") ----");
+    debug(lca);
+    debugln("----");
 
-  println("---- DST TREE (", dst->getName(), ") ----");
-  print(dst_lca);
-  println("----");
-  println("====");
+    debugln("---- DST TREE (", dst->getName(), ") ----");
+    debug(lca->match);
+    debugln("----");
+    debugln("====");
+  }
 
   return result;
 }
