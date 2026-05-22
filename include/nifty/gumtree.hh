@@ -1,6 +1,7 @@
 #ifndef NIFTY_GUMTREE_H
 #define NIFTY_GUMTREE_H
 
+#include <llvm/Analysis/RegionInfo.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Function.h>
 
