@@ -2,6 +2,7 @@
 
 #include "nifty/assert.hh"
 #include "nifty/diff.hh"
+#include "nifty/extract.hh"
 #include "nifty/gumtree.hh"
 #include "nifty/regions.hh"
 
@@ -79,6 +80,15 @@ static GumNode *find_lca(GumNode *src_root,
   return lca;
 }
 
+static llvm::Function *extract_node(GumNode *node) {
+  ExtractOptions options;
+
+  if (llvm::Region *region = node->region)
+    return extract(region, options);
+
+  return extract({ node->block }, options);
+}
+
 DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
   DiffResult result;
 
@@ -126,6 +136,29 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
     debug(lca->match);
     debugln("----");
     debugln("====");
+  }
+
+  // Now that we have the matched ancestors, extract them for validation.
+  GumNode *current = lca;
+  while (current and current != tree.src) {
+    GumNode *match = current->match;
+    NIFTY_ASSERT(match, "No match for LCA!");
+
+    // Extract the regions.
+    llvm::Function *src_func = extract_node(current),
+                   *dst_func = extract_node(match);
+
+    { // Debug print
+      println("---- SRC LCA FUNCTION ----");
+      println(*src_func);
+      println("----");
+      println("---- DST LCA FUNCTION ----");
+      println(*dst_func);
+      println("----");
+    }
+
+    // Walk up the tree.
+    current = current->parent;
   }
 
   return result;
