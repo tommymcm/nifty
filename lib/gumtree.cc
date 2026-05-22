@@ -145,9 +145,13 @@ static GumNode *build_region(
     }
 
     // Build direct block children.
+    llvm::RegionInfo *info = region->getRegionInfo();
     for (llvm::BasicBlock *block : region->blocks()) {
       // Skip subregion entry blocks.
       if (region->getSubRegionNode(block))
+        continue;
+      // Skip blocks that belong to any subregion other than this one.
+      if (info->getRegionFor(block) != region)
         continue;
 
       unsigned index = rpo_index.lookup(block);
