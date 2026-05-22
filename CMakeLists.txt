@@ -28,13 +28,6 @@ add_subdirectory(include)
 add_subdirectory(lib)
 add_subdirectory(src)
 
-configure_file(
-  ${CMAKE_SOURCE_DIR}/enable.in
-  ${CMAKE_BINARY_DIR}/enable
-  @ONLY
-)
-
-install(
-  FILES ${CMAKE_BINARY_DIR}/enable
-  DESTINATION ${CMAKE_SOURCE_DIR}
-)
+# Enable file
+include(cmake/GenerateEnableFile.cmake)
+generate_enable_file(enable.in)

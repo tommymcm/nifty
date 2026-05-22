@@ -1,2 +1,5 @@
 #!/bin/sh
-export PATH="@CMAKE_INSTALL_PREFIX@/bin:$PATH"
+# Auto-generated — do not edit
+export PATH="@ENABLE_BIN_DIR@:$PATH"
+export LD_LIBRARY_PATH="@ENABLE_LIB_DIR@:$LD_LIBRARY_PATH"
+export CMAKE_PREFIX_PATH="@ENABLE_PREFIX_DIR@:$CMAKE_PREFIX_PATH"
