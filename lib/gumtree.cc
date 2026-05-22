@@ -431,22 +431,31 @@ static void bottom_up(GumNode *src,
 
   for (GumNode *s : src->postorder()) {
     // Already matched.
-    if (matches.contains(s))
+    if (s->match)
       continue;
-    // Ignore leaf nodes.
-    if (s->children.empty())
-      continue;
+
+    bool s_is_leaf = s->children.empty();
 
     // Find best candidate in dst by dice similarity.
     GumNode *best = nullptr;
     double best_dice = 0.0;
 
     for (GumNode *d : dst->postorder()) {
-      if (matches.contains(d))
+      // Already matched.
+      if (d->match)
         continue;
+      // Local information does not match.
       if (d->label != s->label)
         continue;
 
+      // Leaves trivially match.
+      bool d_is_leaf = d->children.empty();
+      if (s_is_leaf and d_is_leaf) {
+        best = d;
+        break;
+      }
+
+      // Internal nodes match on dice threshold.
       double d_dice = dice(s, d, matches);
       if (d_dice >= dice_threshold and d_dice > best_dice) {
         best_dice = d_dice;
