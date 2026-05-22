@@ -41,6 +41,7 @@ GumNode::GumNode(llvm::BasicBlock *block)
 
 GumNode::GumNode(llvm::Region *region)
   : block{ region->getEntry() },
+    region{ region },
     label{ compute_hash(region) },
     children{} {
   this->subtree_hash = uint64_t(this->label);

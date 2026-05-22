@@ -10,6 +10,8 @@ namespace nifty {
 struct GumNode {
   /** Entry block for the region */
   llvm::BasicBlock *block;
+  /** Region (or null, if this is a leaf)*/
+  llvm::Region *region = nullptr;
   /** Block hash */
   uint64_t label;
   /** Combined block hashes of children */
