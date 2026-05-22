@@ -5,95 +5,117 @@
 
 namespace nifty {
 
-// ====---- GumTree Diff ----==== //
-struct GumDiff {
-  llvm::SmallVector<GumNode *> added;
-  llvm::SmallVector<GumNode *> removed;
-  /** Matched, but body changed */
-  llvm::SmallVector<GumNode *> modified;
-  /** Matched, but parent changed */
-  llvm::SmallVector<GumNode *> moved;
-};
+static void collect_dirty_src(llvm::SmallVector<GumNode *> &dirty,
+                              GumNode *node) {
 
-GumDiff compute_diff(GumNode *src, GumNode *dst, const GumMatches &matches) {
-  GumDiff diff;
+  if (not node->match) {
+    // unmatched => added or removed
+    dirty.push_back(node);
 
-  debugln("==== Compute Diff ====");
-
-  for (GumNode *s : src->postorder()) {
-    // See if there was a match.
-    auto *d = matches.lookup_or(s, nullptr);
-
-    // No match => Removed
-    if (not d) {
-      diff.removed.push_back(s);
-      continue;
-    }
-
-    // Mismatched labels => Modified
-    if (s->label != d->label)
-      diff.modified.push_back(s);
-
-    // Mismatched parents => Moved
-    if (s->parent and d->parent                    // both have parents
-        and matches.contains(s->parent)            // src parent has a match
-        and matches.lookup(s->parent) != d->parent // mismatch
-    ) {
-      diff.moved.push_back(s);
-    }
+  } else if (node->label != node->match->label) {
+    // matched, but different hash => modified
+    dirty.push_back(node);
   }
 
-  for (GumNode *d : dst->postorder()) {
-    // Unmatched => Added
-    if (not d->match)
-      diff.added.push_back(d);
-  }
-
-  return diff;
+  // Recurse on children.
+  for (GumNode *child : node->children)
+    collect_dirty_src(dirty, child);
 }
 
-// ====---- Diff Driver ----==== //
+static void collect_dirty_dst(llvm::SmallVector<GumNode *> &dirty,
+                              GumNode *node) {
+  // Found an unmatched node.
+  if (not node->match) {
+
+    // Walk up to find the lowest matched ancestor in dst, then use its src
+    // match as the dirty anchor.
+    GumNode *current = node->parent;
+    while (current and not current->match)
+      current = current->parent;
+
+    if (current) {
+      dirty.push_back(node->parent->match);
+    }
+  }
+
+  // Recurse on children.
+  for (GumNode *child : node->children)
+    collect_dirty_dst(dirty, child);
+}
+
+static llvm::SmallVector<GumNode *> collect_dirty(GumNode *src, GumNode *dst) {
+  llvm::SmallVector<GumNode *> dirty;
+
+  collect_dirty_src(dirty, src);
+  collect_dirty_dst(dirty, dst);
+
+  return dirty;
+}
+
+static GumNode *find_lca(GumNode *src_root,
+                         const llvm::SmallVector<GumNode *> &dirty) {
+  // Walk each dirty node up to the root.
+  llvm::DenseMap<GumNode *, unsigned> ancestor_count;
+  for (GumNode *node : dirty) {
+    GumNode *current = node;
+    while (current) {
+      ++ancestor_count[current];
+      current = current->parent;
+    }
+  }
+
+  // The lowest common ancestor is the lowest node whose count equals
+  // dirty.size(), i.e., all dirty paths pass through it.
+  GumNode *lca = src_root;
+  for (GumNode *n : src_root->postorder()) {
+    if (ancestor_count[n] == dirty.size()) {
+      lca = n;
+      break; // postorder gives us deepest first
+    }
+  }
+
+  return lca;
+}
+
 DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
   DiffResult result;
 
   // Construct the gumtree.
   GumTree tree(src, dst, options.refine_top_down, options.match_threshold);
 
-  // Compute the difference.
-  GumDiff diff = compute_diff(tree.src, tree.dst, tree.matches);
-
   // Output the GumTree, if requested.
   if (options.dump_gumtree) {
-    println("---- SRC TREE ----");
+    println("---- SRC TREE (", src->getName(), ") ----");
     print(tree.src);
     println("----");
 
-    println("---- DST TREE ----");
+    println("---- DST TREE (", dst->getName(), ") ----");
     print(tree.dst);
     println("----");
   }
 
-  { // Debug print.
-    debugln("---- ADDED ----");
-    for (GumNode *node : diff.added)
-      debug(node);
-    debugln("----");
+  // If either of the roots are unmatched, do nothing.
+  // We need to validate the whole function!
+  if (not tree.src->match or not tree.dst->match)
+    return result;
 
-    debugln("---- REMOVED ----");
-    for (GumNode *node : diff.removed)
-      debug(node);
-    debugln("----");
+  // Collect all dirty nodes.
+  llvm::SmallVector<GumNode *> dirty = collect_dirty(tree.src, tree.dst);
 
-    debugln("---- MODIFIED ----");
-    for (GumNode *node : diff.modified)
-      debug(node);
-    debugln("----");
+  // Find the lowest common (matched) ancestor of all dirty nodes.
+  GumNode *src_lca = find_lca(tree.src, dirty);
+  GumNode *dst_lca = src_lca->match;
 
-    debugln("---- MOVED ----");
-    for (GumNode *node : diff.moved)
-      debug(node);
-    debugln("----");
-  }
+  println("==== LOWEST COMMON MATCHED ANCESTORS ====");
+
+  println("---- SRC TREE (", src->getName(), ") ----");
+  print(src_lca);
+  println("----");
+
+  println("---- DST TREE (", dst->getName(), ") ----");
+  print(dst_lca);
+  println("----");
+  println("====");
 
   return result;
 }
