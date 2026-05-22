@@ -27,19 +27,6 @@ static uint64_t compute_hash(llvm::BasicBlock *block) {
   return h;
 }
 
-static unsigned count_direct_blocks(llvm::Region *region) {
-  unsigned count = 0;
-
-  llvm::RegionInfo *info = region->getRegionInfo();
-  for (llvm::BasicBlock *block : region->blocks()) {
-    // Check if this block belongs to a subregion.
-    if (info->getRegionFor(block) != region)
-      ++count;
-  }
-
-  return count;
-}
-
 static uint64_t compute_hash(llvm::Region *region) {
   uint64_t h = compute_hash(region->getEntry());
 
