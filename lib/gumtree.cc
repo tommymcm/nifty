@@ -68,6 +68,22 @@ llvm::SmallVector<GumNode *> GumNode::postorder() {
   return result;
 }
 
+static llvm::raw_ostream &node_name(llvm::raw_ostream &os, GumNode *node) {
+  // Is this a leaf (no children = plain BB) or an internal this (region)?
+  os << (node->children.empty() ? "Block" : "Region");
+
+  // BB name or number
+  if (node->block) {
+    os << "[";
+    node->block->printAsOperand(os, false);
+    os << "]";
+  } else {
+    os << "[?]";
+  }
+
+  return os;
+}
+
 static llvm::raw_ostream &print(llvm::raw_ostream &os,
                                 GumNode *node,
                                 unsigned indent = 0) {
@@ -75,20 +91,7 @@ static llvm::raw_ostream &print(llvm::raw_ostream &os,
 
   os << pad;
 
-  // BB name or number
-  if (node->block) {
-    os << "BB[";
-    node->block->printAsOperand(os, false);
-    os << "]";
-  } else {
-    os << "BB[?]";
-  }
-
-  // Is this a leaf (no children = plain BB) or an internal this (region)?
-  if (node->children.empty())
-    os << " (leaf)";
-  else
-    os << " (region, " << node->children.size() << " children)";
+  node_name(os, node);
 
   // Label summary
   os << " hash=" << llvm::format_hex(uint64_t(node->label), 10);
@@ -100,7 +103,7 @@ static llvm::raw_ostream &print(llvm::raw_ostream &os,
   // Match status
   if (node->match) {
     os << " matched=>";
-    node->match->block->printAsOperand(os, false);
+    node_name(os, node->match);
   } else {
     os << " unmatched";
   }
