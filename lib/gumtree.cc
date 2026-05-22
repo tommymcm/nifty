@@ -478,12 +478,11 @@ static void bottom_up(GumNode *src,
 // ====---- GumTree ----==== //
 GumTree::GumTree(llvm::Function *src,
                  llvm::Function *dst,
+                 llvm::RegionInfo *src_regions,
+                 llvm::RegionInfo *dst_regions,
                  bool refine_top_down,
                  double match_threshold)
   : matches{} {
-
-  // Fetch the region information.
-  llvm::RegionInfo *src_regions = regions(src), *dst_regions = regions(dst);
 
   // Build GumTree.
   this->src = build_tree(src, src_regions);

@@ -50,6 +50,8 @@ struct GumTree {
   /** Construct a GumTree by diff'ing the two functions */
   GumTree(llvm::Function *src,
           llvm::Function *dst,
+          llvm::RegionInfo *src_regions,
+          llvm::RegionInfo *dst_regions,
           bool refine_top_down = false,
           double match_threshold = 0.5);
 };

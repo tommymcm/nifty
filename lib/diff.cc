@@ -1,5 +1,7 @@
-#include "nifty/diff.hh"
+#include <llvm/Analysis/RegionInfo.h>
+
 #include "nifty/assert.hh"
+#include "nifty/diff.hh"
 #include "nifty/gumtree.hh"
 #include "nifty/regions.hh"
 
@@ -80,8 +82,16 @@ static GumNode *find_lca(GumNode *src_root,
 DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
   DiffResult result;
 
+  // Fetch the region information.
+  llvm::RegionInfo *src_regions = regions(src), *dst_regions = regions(dst);
+
   // Construct the gumtree.
-  GumTree tree(src, dst, options.refine_top_down, options.match_threshold);
+  GumTree tree(src,
+               dst,
+               src_regions,
+               dst_regions,
+               options.refine_top_down,
+               options.match_threshold);
 
   // Output the GumTree, if requested.
   if (options.dump_gumtree) {
