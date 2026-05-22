@@ -28,23 +28,7 @@ static uint64_t compute_hash(llvm::BasicBlock *block) {
 }
 
 static uint64_t compute_hash(llvm::Region *region) {
-  uint64_t h = compute_hash(region->getEntry());
-
-  // Number of direct leaf blocks in region.
-  unsigned direct_blocks = 0;
-  { // Count direct blocks
-    llvm::RegionInfo *info = region->getRegionInfo();
-    for (llvm::BasicBlock *block : region->blocks()) {
-      // Check if this block belongs to a subregion.
-      if (info->getRegionFor(block) != region)
-        ++direct_blocks;
-    }
-  }
-  h = combine_hash(h, direct_blocks);
-
-  // Number of total basic blocks in region.
-  h = combine_hash(h, std::distance(region->begin(), region->end()));
-  return h;
+  return compute_hash(region->getEntry());
 }
 
 // ====---- GumNode ----==== //
