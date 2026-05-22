@@ -460,8 +460,6 @@ double dice(GumNode *src, GumNode *dst, const Matches &matches) {
   return 2.0 * common / total;
 }
 
-const double DICE_THRESHOLD = 5.0;
-
 void bottom_up(GumNode *src,
                GumNode *dst,
                Matches &matches,
@@ -487,12 +485,10 @@ void bottom_up(GumNode *src,
       if (d->label != s->label)
         continue;
 
-      if (is_descendant(s, d)) {
-        double d_dice = dice(s, d, matches);
-        if (d_dice > DICE_THRESHOLD and d_dice > best_dice) {
-          best_dice = d_dice;
-          best = d;
-        }
+      double d_dice = dice(s, d, matches);
+      if (d_dice >= dice_threshold and d_dice > best_dice) {
+        best_dice = d_dice;
+        best = d;
       }
     }
 
@@ -569,7 +565,11 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
   // Run GumTree algorithm
   Matches matches;
   top_down(src_tree, dst_tree, matches);
-  bottom_up(src_tree, dst_tree, matches);
+  bottom_up(src_tree,
+            dst_tree,
+            matches,
+            options.refine_top_down,
+            options.match_threshold);
 
   // Compute the difference.
   GumDiff diff = compute_diff(src_tree, dst_tree, matches);

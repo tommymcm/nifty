@@ -14,6 +14,8 @@ struct DiffOptions {
   bool regions = false;
   /** Refine missed matches by re-running top-down after bottom-up matches */
   bool refine_top_down = false;
+  /** Threshold for region matching. 0.0 (always match) - 1.0 (only exact) */
+  double match_threshold = 0.5;
   /** Dump GumTree */
   bool dump_gumtree = false;
 };

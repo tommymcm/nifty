@@ -74,6 +74,15 @@ cl::opt<bool> opt_diff_refine_top_down( //
     cl::desc("refine matching with extra top-down passes"),
     cl::sub(cmd_diff));
 
+cl::opt<double> opt_diff_match_threshold( //
+    "match-threshold",
+    cl::desc("Minimum similarity score (0.0-1.0) required to match two "
+             "structurally changed regions. Lower values match more "
+             "aggressively across large transformations. (default: 0.5)"),
+    cl::value_desc("value"),
+    cl::init(0.5),
+    cl::sub(cmd_diff));
+
 cl::opt<bool> opt_diff_dump_gumtree( //
     "dump-gumtree",
     cl::desc("dump intermediate GumTree to stdout"),
@@ -149,6 +158,7 @@ int main(int argc, char **argv) {
 
     // Compute and extract the diff.
     DiffOptions options = { .refine_top_down = opt_diff_refine_top_down,
+                            .match_threshold = opt_diff_match_threshold,
                             .dump_gumtree = opt_diff_dump_gumtree };
     diff(function, other_function, options);
 
