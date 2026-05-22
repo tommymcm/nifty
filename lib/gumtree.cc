@@ -336,7 +336,6 @@ static void top_down(GumNode *src, GumNode *dst, GumMatches &matches) {
     }
 
     // Heights are equal, try to match by subtree hash.
-    llvm::DenseSet<GumNode *> matched_dst;
     for (GumNode *s : src_nodes) {
       auto it = dst_by_hash.find(s->subtree_hash);
       if (it == dst_by_hash.end()) {
@@ -352,7 +351,6 @@ static void top_down(GumNode *src, GumNode *dst, GumMatches &matches) {
       if (candidates.size() == 1) {
         GumNode *candidate = candidates.front();
         match_subtree(s, candidate, matches);
-        matched_dst.insert(candidate);
         continue;
       }
 
@@ -360,7 +358,6 @@ static void top_down(GumNode *src, GumNode *dst, GumMatches &matches) {
       GumNode *best = best_candidate(s, candidates, matches);
       if (best) {
         match_subtree(s, best, matches);
-        matched_dst.insert(best);
         continue;
       }
 
@@ -371,7 +368,7 @@ static void top_down(GumNode *src, GumNode *dst, GumMatches &matches) {
 
     // Dst unmatched => push its children
     for (GumNode *d : dst_nodes) {
-      if (not matched_dst.contains(d))
+      if (not d->match)
         for (GumNode *c : d->children)
           push_open(c, dst_queue);
     }
