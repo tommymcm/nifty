@@ -233,8 +233,6 @@ GumNode *build_tree(llvm::Function *function, llvm::RegionInfo *regions) {
 }
 
 // -------- GumTree Top-down -------- //
-const unsigned MIN_HEIGHT = 1;
-
 using Matches = typename llvm::DenseMap<GumNode *, GumNode *>;
 
 void match_subtree(GumNode *src, GumNode *dst, Matches &matches) {
