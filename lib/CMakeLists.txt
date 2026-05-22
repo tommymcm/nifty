@@ -6,4 +6,5 @@ add_llvm_library(
   strip.cc
   extract.cc
   diff.cc
+  gumtree.cc
 )
