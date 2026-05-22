@@ -222,7 +222,7 @@ GumNode *build_region(
 }
 
 GumNode *build_tree(llvm::Function *function, llvm::RegionInfo *regions) {
-  println("==== Build Tree ====");
+  debugln("==== Build Tree ====");
   llvm::ReversePostOrderTraversal<llvm::Function *> rpo_traversal(function);
 
   llvm::DenseMap<llvm::BasicBlock *, unsigned> rpo_index;
@@ -327,7 +327,7 @@ GumNode *best_candidate(GumNode *src,
 }
 
 void top_down(GumNode *src, GumNode *dst, Matches &matches) {
-  println("==== Top-Down ====");
+  debugln("==== Top-Down ====");
 
   // Max-priority queue ordered by node height
   // Each entry is a list of nodes at that height
@@ -348,7 +348,7 @@ void top_down(GumNode *src, GumNode *dst, Matches &matches) {
     auto src_begin = src_queue.begin(), dst_begin = dst_queue.begin();
     unsigned src_max = src_begin->first, dst_max = dst_begin->first;
 
-    println("src.max = ", src_max, "    dst.max = ", dst_max);
+    debugln("src.max = ", src_max, "    dst.max = ", dst_max);
 
     // Always process the taller side down to match heights.
     if (src_max != dst_max) {
@@ -363,8 +363,8 @@ void top_down(GumNode *src, GumNode *dst, Matches &matches) {
     // Fetch the nodes at the shared height.
     auto &src_nodes = src_begin->second, &dst_nodes = dst_begin->second;
 
-    println("# SRC NODES ", src_nodes.size());
-    println("# DST NODES ", dst_nodes.size());
+    debugln("# SRC NODES ", src_nodes.size());
+    debugln("# DST NODES ", dst_nodes.size());
 
     // Group dst nodes by subtree hash for fast lookup.
     llvm::DenseMap<uint64_t, llvm::SmallVector<GumNode *>> dst_by_hash;
@@ -467,8 +467,9 @@ const double DICE_THRESHOLD = 5.0;
 void bottom_up(GumNode *src,
                GumNode *dst,
                Matches &matches,
-               bool refine_top_down = false) {
-  println("==== Bottom-Up ====");
+               bool refine_top_down = false,
+               double dice_threshold = 0.5) {
+  debugln("==== Bottom-Up ====");
 
   for (GumNode *s : postorder(src)) {
     // Already matched.
@@ -522,7 +523,7 @@ struct GumDiff {
 GumDiff compute_diff(GumNode *src, GumNode *dst, const Matches &matches) {
   GumDiff diff;
 
-  println("==== Compute Diff ====");
+  debugln("==== Compute Diff ====");
 
   for (GumNode *s : postorder(src)) {
     // See if there was a match.
@@ -587,25 +588,25 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
   }
 
   { // Debug print.
-    println("---- ADDED ----");
+    debugln("---- ADDED ----");
     for (GumNode *node : diff.added)
-      print(node);
-    println("----");
+      debug(node);
+    debugln("----");
 
-    println("---- REMOVED ----");
+    debugln("---- REMOVED ----");
     for (GumNode *node : diff.removed)
-      print(node);
-    println("----");
+      debug(node);
+    debugln("----");
 
-    println("---- MODIFIED ----");
+    debugln("---- MODIFIED ----");
     for (GumNode *node : diff.modified)
-      print(node);
-    println("----");
+      debug(node);
+    debugln("----");
 
-    println("---- MOVED ----");
+    debugln("---- MOVED ----");
     for (GumNode *node : diff.moved)
-      print(node);
-    println("----");
+      debug(node);
+    debugln("----");
   }
 
   return result;
