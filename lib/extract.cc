@@ -299,17 +299,6 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
     vmap[&old_arg] = &new_arg;
   }
 
-  for (auto &block : *out_function) {
-    for (auto &inst : block) {
-      for (auto &operand : inst.operands()) {
-        llvm::Value *value = operand.get();
-        if (!isa<llvm::Constant>(value) && !vmap.count(value)) {
-          println("Missing from VMap: ", *value);
-        }
-      }
-    }
-  }
-
   // Remap values.
   debugln("==== REMAP VALUES ====");
   llvm::ValueMapper mapper(vmap, llvm::RF_IgnoreMissingLocals);
