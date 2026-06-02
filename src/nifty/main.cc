@@ -208,7 +208,6 @@ int main(int argc, char **argv) {
       return exitcode;
 
     // Print the function manifest as a CSV.
-    println("src,tgt");
     for (const auto &[src_func, tgt_func] : result)
       println(src_func->getName(), ",", tgt_func->getName());
     println(function->getName(), ",", other_function->getName());
