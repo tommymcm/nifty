@@ -156,12 +156,12 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
     result[src_func] = dst_func;
 
     { // Debug print
-      println("---- SRC LCA FUNCTION ----");
-      println(*src_func);
-      println("----");
-      println("---- DST LCA FUNCTION ----");
-      println(*dst_func);
-      println("----");
+      debugln("---- SRC LCA FUNCTION ----");
+      debugln(*src_func);
+      debugln("----");
+      debugln("---- DST LCA FUNCTION ----");
+      debugln(*dst_func);
+      debugln("----");
     }
 
     // Walk up the tree.
