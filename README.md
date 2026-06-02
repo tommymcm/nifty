@@ -13,6 +13,21 @@ ninja
 
 ## Tools
 
-### `strip-tbaa`
+### `nifty extract`
+Extract a set of basic blocks from a function into their own function.
+
+`--func` specifies a function to extract from (no @).
+`--regions` extracts all SESE regions from the given function.
+
+
+### `nifty diff`
+Find the differences between two IR files based on the program structure tree.
+Uses the [GumTree](https://hal.science/hal-04855170v1/file/GumTree_simple__fine_grained__accurate_and_scalable_source_differencing.pdf) algorithm.
+
+`--func` specifies a function to process (no @).
+`--dump-gumtree` dump the GumTree representation of the function diff.
+
+
+### `nifty strip-tbaa`
 Strip TBAA metadata from an LLVM program.
 This is useful when passes assume that TBAA metadata doesn't exist (like Alive2).
