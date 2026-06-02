@@ -207,6 +207,15 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   // Create the entry block.
   auto *entry_block = llvm::BasicBlock::Create(context, "entry", out_function);
 
+  // Map all non-local incoming block to the entry block.
+  for (llvm::BasicBlock *succ : llvm::predecessors(first_block)) {
+    // Skip local blocks.
+    if (blockset.contains(succ))
+      continue;
+
+    vmap[succ] = entry_block;
+  }
+
   // Create a builder.
   llvm::IRBuilder<> builder(entry_block);
 
@@ -284,9 +293,26 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
     }
   }
 
+  // Map old arguments to new arguments.
+  for (const auto &[old_arg, new_arg] :
+       llvm::zip(function->args(), out_function->args())) {
+    vmap[&old_arg] = &new_arg;
+  }
+
+  for (auto &block : *out_function) {
+    for (auto &inst : block) {
+      for (auto &operand : inst.operands()) {
+        llvm::Value *value = operand.get();
+        if (!isa<llvm::Constant>(value) && !vmap.count(value)) {
+          println("Missing from VMap: ", *value);
+        }
+      }
+    }
+  }
+
   // Remap values.
   debugln("==== REMAP VALUES ====");
-  llvm::ValueMapper mapper(vmap);
+  llvm::ValueMapper mapper(vmap, llvm::RF_IgnoreMissingLocals);
   mapper.remapFunction(*out_function);
 
   // Store live-out values to global variable before function exit.
