@@ -9,6 +9,7 @@ llvm_map_components_to_libnames(LLVM_LIBS
   BitWriter
   Support
   TransformUtils
+  Analysis
 )
 
 target_link_libraries(
