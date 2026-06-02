@@ -80,9 +80,8 @@ static GumNode *find_lca(GumNode *src_root,
   return lca;
 }
 
-static llvm::Function *extract_node(GumNode *node) {
-  ExtractOptions options;
-
+static llvm::Function *extract_node(GumNode *node,
+                                    const ExtractOptions &options) {
   if (llvm::Region *region = node->region)
     return extract(region, options);
 
@@ -145,8 +144,16 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
     NIFTY_ASSERT(match, "No match for LCA!");
 
     // Extract the regions.
-    llvm::Function *src_func = extract_node(current),
-                   *dst_func = extract_node(match);
+    ExtractOptions options;
+    llvm::Function *src_func = extract_node(current, options),
+                   *dst_func = extract_node(match, options);
+
+    // Ensure that they were both created.
+    NIFTY_ASSERT(src_func, "failed to extract src function");
+    NIFTY_ASSERT(dst_func, "failed to extract dst function");
+
+    // Record the pair.
+    result[src_func] = dst_func;
 
     { // Debug print
       println("---- SRC LCA FUNCTION ----");
