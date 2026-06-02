@@ -179,7 +179,7 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
           *out_module,
           value->getType(),
           /* constant? */ false,
-          llvm::GlobalVariable::LinkageTypes::AvailableExternallyLinkage,
+          llvm::GlobalVariable::LinkageTypes::ExternalLinkage,
           /* initializer */ nullptr);
 
       {
