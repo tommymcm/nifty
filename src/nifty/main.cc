@@ -64,6 +64,11 @@ cl::opt<std::string> opt_diff_path( //
     cl::desc("<other input>"),
     cl::sub(cmd_diff));
 
+cl::opt<std::string> opt_diff_outpath( //
+    "O",
+    cl::desc("second output file"),
+    cl::sub(cmd_diff));
+
 cl::opt<std::string> opt_diff_function( //
     "func",
     cl::desc("function to diff"),
@@ -87,6 +92,37 @@ cl::opt<bool> opt_diff_dump_gumtree( //
     "dump-gumtree",
     cl::desc("dump intermediate GumTree to stdout"),
     cl::sub(cmd_diff));
+
+// ====---- Output ----==== //
+int write(StringRef outpath, const llvm::Module &module) {
+  if (outpath.empty()) {
+    module.print(outs(), nullptr);
+  } else {
+
+    // Are we writing bitcode, or textual IR.
+    bool is_bitcode = outpath.ends_with(".bc");
+    auto flag = is_bitcode ? sys::fs::OF_None : sys::fs::OF_Text;
+
+    // Open the output file.
+    std::error_code code;
+    ToolOutputFile outfile(outpath, code, flag);
+    if (code) {
+      errs() << code.message() << "\n";
+      return 1;
+    }
+
+    // Write to it.
+    if (is_bitcode) {
+      WriteBitcodeToFile(module, outfile.os());
+    } else {
+      module.print(outfile.os(), nullptr);
+    }
+
+    outfile.keep();
+  }
+
+  return 0;
+}
 
 // ====---- Dispatch ----==== //
 int main(int argc, char **argv) {
@@ -160,7 +196,25 @@ int main(int argc, char **argv) {
     DiffOptions options = { .refine_top_down = opt_diff_refine_top_down,
                             .match_threshold = opt_diff_match_threshold,
                             .dump_gumtree = opt_diff_dump_gumtree };
-    diff(function, other_function, options);
+    DiffResult result = diff(function, other_function, options);
+
+    // Write the functions to the output modules.
+    StringRef outpath = opt_outpath;
+    if (int exitcode = write(outpath, *module.get()))
+      return exitcode;
+
+    StringRef other_outpath = opt_diff_outpath;
+    if (int exitcode = write(other_outpath, *other_module.get()))
+      return exitcode;
+
+    // Print the function manifest as a CSV.
+    println("src,tgt");
+    for (const auto &[src_func, tgt_func] : result)
+      println(src_func->getName(), ",", tgt_func->getName());
+    println(function->getName(), ",", other_function->getName());
+
+    // Return early.
+    return 0;
 
   } else if (cmd_strip_tbaa) {
     strip(*module.get(), { LLVMContext::MD_tbaa });
@@ -168,28 +222,7 @@ int main(int argc, char **argv) {
 
   // Handle output file, if needed.
   StringRef outpath = opt_outpath;
-  if (outpath.empty()) {
-    module->print(outs(), nullptr);
-  } else {
-
-    bool is_bitcode = outpath.ends_with(".bc");
-    auto flag = is_bitcode ? sys::fs::OF_None : sys::fs::OF_Text;
-
-    std::error_code code;
-    ToolOutputFile outfile(outpath, code, flag);
-    if (code) {
-      errs() << code.message() << "\n";
-      return 1;
-    }
-
-    if (is_bitcode) {
-      WriteBitcodeToFile(*module, outfile.os());
-    } else {
-      module->print(outfile.os(), nullptr);
-    }
-
-    outfile.keep();
-  }
+  write(outpath, *module.get());
 
   return 0;
 }
