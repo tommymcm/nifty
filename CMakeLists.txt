@@ -32,32 +32,32 @@ add_subdirectory(lib)
 add_subdirectory(src)
 
 # Create the CMake package
- include(CMakePackageConfigHelpers)
- include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+include(GNUInstallDirs)
 
- install(EXPORT NiftyTargets
-   FILE NiftyTargets.cmake
-   NAMESPACE Nifty::
-   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Nifty
- )
+install(EXPORT NiftyTargets
+  FILE NiftyTargets.cmake
+  NAMESPACE Nifty::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Nifty
+)
 
- configure_package_config_file(
-   cmake/NiftyConfig.cmake.in
-   ${CMAKE_CURRENT_BINARY_DIR}/NiftyConfig.cmake
-   INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Nifty
- )
+configure_package_config_file(
+  cmake/NiftyConfig.cmake.in
+  ${CMAKE_CURRENT_BINARY_DIR}/NiftyConfig.cmake
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Nifty
+)
 
- write_basic_package_version_file(
-   ${CMAKE_CURRENT_BINARY_DIR}/NiftyConfigVersion.cmake
-   VERSION ${PROJECT_VERSION}
-   COMPATIBILITY AnyNewerVersion
- )
+write_basic_package_version_file(
+  ${CMAKE_CURRENT_BINARY_DIR}/NiftyConfigVersion.cmake
+  VERSION ${PROJECT_VERSION}
+  COMPATIBILITY AnyNewerVersion
+)
 
- install(FILES
-   ${CMAKE_CURRENT_BINARY_DIR}/NiftyConfig.cmake
-   ${CMAKE_CURRENT_BINARY_DIR}/NiftyConfigVersion.cmake
-   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Nifty
- )
+install(FILES
+  ${CMAKE_CURRENT_BINARY_DIR}/NiftyConfig.cmake
+  ${CMAKE_CURRENT_BINARY_DIR}/NiftyConfigVersion.cmake
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Nifty
+)
 
 # Enable file
 include(cmake/GenerateEnableFile.cmake)
