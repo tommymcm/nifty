@@ -17,10 +17,18 @@ set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 
+# Use the LLVM compiler flags to match the build
+if(NOT LLVM_ENABLE_RTTI)
+    add_compile_options(-fno-rtti)
+endif()
+
+if(NOT LLVM_ENABLE_EH)
+    add_compile_options(-fno-exceptions)
+endif()
+
 # Compiler options
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
-add_definitions(-fno-rtti)
 
 # Global output directory (all executables in <build>/bin/
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
