@@ -173,7 +173,7 @@ int main(int argc, char **argv) {
     // Find the function.
     Function *function = nullptr;
     if (opt_diff_function.getNumOccurrences() > 0) {
-      function = module->getFunction(opt_extract_function);
+      function = module->getFunction(opt_diff_function);
     } else {
       function = &*module->begin();
     }
