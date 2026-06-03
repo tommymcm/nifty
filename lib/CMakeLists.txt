@@ -7,6 +7,7 @@ add_library(
   extract.cc
   diff.cc
   gumtree.cc
+  print.cc
 )
 
 target_include_directories(nifty_core PUBLIC
