@@ -12,6 +12,9 @@ message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
 include(AddLLVM)
 
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH ON)
+set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
+
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 
 # Compiler options
