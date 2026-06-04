@@ -30,9 +30,11 @@ struct GumNode {
   GumNode *match = nullptr;
 
   /** Construct a node for the basic block */
-  GumNode(llvm::BasicBlock *block);
+  GumNode(llvm::BasicBlock *block,
+          const llvm::DenseMap<llvm::Value *, uint64_t> &cache);
   /** Construct a node for the region */
-  GumNode(llvm::Region *region);
+  GumNode(llvm::Region *region,
+          const llvm::DenseMap<llvm::Value *, uint64_t> &cache);
 
   /** Fetch a postorder traversal of the node */
   llvm::SmallVector<GumNode *> postorder();

@@ -2,6 +2,7 @@
 #include <llvm/Analysis/RegionInfo.h>
 
 #include "nifty/assert.hh"
+#include "nifty/cast.hh"
 #include "nifty/diff.hh"
 #include "nifty/gumtree.hh"
 #include "nifty/regions.hh"
