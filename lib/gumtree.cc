@@ -1,5 +1,8 @@
+#include <llvm/ADT/Hashing.h>
 #include <llvm/ADT/PostOrderIterator.h>
 #include <llvm/Analysis/RegionInfo.h>
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/InstIterator.h>
 
 #include "nifty/assert.hh"
 #include "nifty/cast.hh"
@@ -16,34 +19,143 @@ static inline uint64_t combine_hash(const uint64_t h, const uint64_t v) {
   return h * SMALL_PRIME + v;
 }
 
-static uint64_t compute_hash(llvm::BasicBlock *block) {
+static uint64_t compute_hash(
+    const llvm::DenseMap<llvm::Value *, uint64_t> &cache,
+    llvm::BasicBlock *block) {
   uint64_t h = 0;
   for (llvm::Instruction &inst : *block)
-    h = combine_hash(h, inst.getOpcode());
-  for (llvm::Instruction &inst : *block)
-    h = combine_hash(h, uint64_t(inst.getType()));
-  h = combine_hash(h, block->getTerminator()->getNumSuccessors());
+    h = combine_hash(h, cache.lookup(&inst));
   h = combine_hash(h, block->isEntryBlock());
+  llvm::Instruction *term = block->getTerminator();
+  h = combine_hash(h, term->getNumSuccessors());
   // TODO: add PST-specific components
   return h;
 }
 
-static uint64_t compute_hash(llvm::Region *region) {
-  return compute_hash(region->getEntry());
+static uint64_t compute_hash(
+    const llvm::DenseMap<llvm::Value *, uint64_t> &cache,
+    llvm::Region *region) {
+  return compute_hash(cache, region->getEntry());
+}
+
+static uint64_t hash_type(llvm::Type *type) {
+  if (type->isIntegerTy())
+    return llvm::hash_combine(llvm::StringRef("int"),
+                              type->getIntegerBitWidth());
+  if (type->isFloatingPointTy())
+    return llvm::hash_combine(llvm::StringRef("fp"), type->getTypeID());
+  if (type->isPointerTy())
+    return llvm::hash_combine(llvm::StringRef("ptr"));
+  if (type->isArrayTy())
+    return llvm::hash_combine(llvm::StringRef("array"),
+                              type->getArrayNumElements(),
+                              hash_type(type->getArrayElementType()));
+  if (type->isStructTy()) {
+    uint64_t h = llvm::hash_combine(llvm::StringRef("struct"),
+                                    type->getStructNumElements());
+    for (llvm::Type *elem : type->subtypes())
+      h = llvm::hash_combine(h, hash_type(elem));
+    return h;
+  }
+  if (auto *vec_type = dyn_cast<llvm::VectorType>(type)) {
+    llvm::ElementCount elem_count = vec_type->getElementCount();
+    return llvm::hash_combine(llvm::StringRef("vec"),
+                              elem_count.getKnownMinValue(),
+                              elem_count.isScalable(),
+                              hash_type(vec_type->getElementType()));
+  }
+  return llvm::hash_combine(type->getTypeID());
+}
+
+static uint64_t hash_constant(llvm::Constant *constant) {
+  if (auto *const_int = dyn_cast<llvm::ConstantInt>(constant))
+    return llvm::hash_combine(const_int->getBitWidth(), const_int->getValue());
+
+  if (auto *const_float = dyn_cast<llvm::ConstantFP>(constant))
+    return llvm::hash_combine(const_float->getValueAPF().bitcastToAPInt());
+
+  if (isa<llvm::ConstantPointerNull>(constant))
+    return llvm::hash_combine(llvm::StringRef("null"),
+                              constant->getType()->getTypeID());
+
+  if (isa<llvm::UndefValue>(constant))
+    return llvm::hash_combine(llvm::StringRef("undef"));
+
+  // Unknown constant kind — hash by type structure
+  // TODO: we may want to fall back on pointer hashing here.
+  return hash_type(constant->getType());
+}
+
+static uint64_t hash_value(llvm::DenseMap<llvm::Value *, uint64_t> &cache,
+                           llvm::DenseSet<llvm::Value *> &in_progress,
+                           llvm::Value *value,
+                           llvm::Region *region) {
+  auto found = cache.find(value);
+  if (found != cache.end())
+    return found->second;
+
+  // Cycle detected, return a stable placeholder until we can resolve it.
+  if (in_progress.contains(value))
+    return llvm::hash_combine(llvm::StringRef("cycle"),
+                              hash_type(value->getType()));
+  in_progress.insert(value);
+
+  uint64_t h = 0;
+
+  // Handle constants.
+  if (auto *constant = dyn_cast<llvm::Constant>(value)) {
+    h = hash_constant(constant);
+
+  } else if (auto *arg = dyn_cast<llvm::Argument>(value)) {
+    h = llvm::hash_combine(llvm::StringRef("arg"), arg->getArgNo());
+
+  } else if (auto *inst = dyn_cast<llvm::Instruction>(value)) {
+    h = llvm::hash_combine(inst->getOpcode(), inst->getType());
+    for (llvm::Value *op : inst->operands())
+      h = llvm::hash_combine(h, hash_value(cache, in_progress, op, region));
+
+  } else { // external value
+    h = llvm::hash_combine(llvm::StringRef("extern"), value->getType());
+  }
+
+  in_progress.erase(value);
+  cache[value] = h;
+
+  return h;
+}
+
+static void hash_instructions(llvm::DenseMap<llvm::Value *, uint64_t> &cache,
+                              llvm::Function *function,
+                              llvm::RegionInfo *region_info) {
+
+  llvm::DenseSet<llvm::Value *> in_progress;
+
+  // Iterate over the function to hash values.
+  llvm::ReversePostOrderTraversal<llvm::Function *> rpo_traversal(function);
+  for (llvm::BasicBlock *block : rpo_traversal) {
+    llvm::Region *region = region_info->getRegionFor(block);
+    for (llvm::Instruction &inst : *block) {
+      hash_value(cache, in_progress, &inst, region);
+    }
+  }
+
+  return;
 }
 
 // ====---- GumNode ----==== //
-GumNode::GumNode(llvm::BasicBlock *block)
+GumNode::GumNode(llvm::BasicBlock *block,
+                 const llvm::DenseMap<llvm::Value *, uint64_t> &cache)
   : block{ block },
-    label{ compute_hash(block) },
+    label{ compute_hash(cache, block) },
     children{} {
   this->subtree_hash = uint64_t(this->label);
 }
 
-GumNode::GumNode(llvm::Region *region)
+GumNode::GumNode(llvm::Region *region,
+                 const llvm::DenseMap<llvm::Value *, uint64_t> &cache)
   : block{ region->getEntry() },
     region{ region },
-    label{ compute_hash(region) },
+    label{ compute_hash(cache, region) },
     children{} {
   this->subtree_hash = uint64_t(this->label);
 }
@@ -128,10 +240,11 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, GumNode *node) {
 // ====---- Initialization ----==== //
 static GumNode *build_region(
     llvm::Region *region,
-    const llvm::DenseMap<llvm::BasicBlock *, unsigned> &rpo_index) {
+    const llvm::DenseMap<llvm::BasicBlock *, unsigned> &rpo_index,
+    const llvm::DenseMap<llvm::Value *, uint64_t> &hashes) {
 
   // Create a node for this region.
-  auto *node = new GumNode(region);
+  auto *node = new GumNode(region, hashes);
 
   { // Build the children.
 
@@ -141,7 +254,7 @@ static GumNode *build_region(
     // Build direct subregion children.
     for (std::unique_ptr<llvm::Region> &sub_region : *region) {
       unsigned index = rpo_index.lookup(sub_region->getEntry());
-      GumNode *child = build_region(sub_region.get(), rpo_index);
+      GumNode *child = build_region(sub_region.get(), rpo_index, hashes);
       child->parent = node;
       ordered_children.emplace_back(child, index);
     }
@@ -157,7 +270,7 @@ static GumNode *build_region(
         continue;
 
       unsigned index = rpo_index.lookup(block);
-      GumNode *child = new GumNode(block);
+      GumNode *child = new GumNode(block, hashes);
       child->parent = node;
       ordered_children.emplace_back(child, index);
     }
@@ -192,13 +305,19 @@ static GumNode *build_region(
 
 GumNode *build_tree(llvm::Function *function, llvm::RegionInfo *regions) {
   debugln("==== Build Tree ====");
+
+  debugln("---- Hash Instructions ----");
+  llvm::DenseMap<llvm::Value *, uint64_t> inst_hashes;
+  hash_instructions(inst_hashes, function, regions);
+
+  debugln("---- Compute Reverse Post-Order ----");
   llvm::ReversePostOrderTraversal<llvm::Function *> rpo_traversal(function);
 
   llvm::DenseMap<llvm::BasicBlock *, unsigned> rpo_index;
   for (auto [index, block] : llvm::enumerate(rpo_traversal))
     rpo_index[block] = index;
 
-  return build_region(regions->getTopLevelRegion(), rpo_index);
+  return build_region(regions->getTopLevelRegion(), rpo_index, inst_hashes);
 }
 
 // ====---- GumTree Top-down ----==== //
