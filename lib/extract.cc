@@ -165,6 +165,15 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   llvm::DenseMap<llvm::Value *, llvm::GlobalVariable *> globals;
   for (auto &values : { live_in, live_out }) {
     for (llvm::Value *value : values) {
+      // Fetch the type, and skip invalid types.
+      auto *type = value->getType();
+      if (not type)
+        continue;
+
+      // Skip metadata.
+      if (type->isMetadataTy())
+        continue;
+
       // Skip arguments.
       if (isa<llvm::Argument>(value))
         continue;
@@ -178,6 +187,10 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
         // TODO: Implement global value cloning.
         NIFTY_UNREACHABLE("NYI: global value cloning ");
       }
+
+      // If we've already created a global for this value, skip it.
+      if (globals.contains(value))
+        continue;
 
       // Create the global variable.
       auto *global = new llvm::GlobalVariable(
@@ -194,8 +207,7 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
       }
 
       // Map the original value to the new global.
-      auto [_it, fresh] = globals.try_emplace(value, global);
-      NIFTY_ASSERT(fresh, "Failed to record global!");
+      auto [_it, _fresh] = globals.try_emplace(value, global);
     }
   }
 
