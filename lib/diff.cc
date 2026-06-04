@@ -141,6 +141,10 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
   // Collect all dirty nodes.
   llvm::SmallVector<GumNode *> dirty = collect_dirty(tree.src, tree.dst);
 
+  // If there are no dirty nodes, then we don't need to extract any nodes.
+  if (dirty.empty())
+    return result;
+
   // Find the lowest common (matched) ancestor of all dirty nodes.
   GumNode *lca = find_lca(tree.src, dirty);
 
