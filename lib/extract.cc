@@ -43,7 +43,6 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   // live-in values are used in the blocks, but defined outside.
   // live-out valies are defined in the blocks, but used outside.
   llvm::SmallVector<llvm::Value *, 0> live_in, live_out;
-  llvm::SmallVector<llvm::BasicBlockEdge> exit_edges;
 
   llvm::DenseSet<llvm::Value *> seen;
   for (llvm::BasicBlock *block : blocks) {
@@ -105,15 +104,8 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
         // NOTE: This is necessary to handle non-local control dependences.
         bool local_jump = true;
         for (llvm::BasicBlock *succ_block : llvm::successors(user_block)) {
-          // Skip local blocks.
-          if (blockset.contains(succ_block))
-            continue;
-
-          // Register the non-local exit edge.
-          exit_edges.emplace_back(user_block, succ_block);
-
-          // Mark the jump as non-local.
-          local_jump = false;
+          // Check if the jump is local.
+          local_jump &= blockset.contains(succ_block);
         }
 
         // If the jump is local, skip the use.
@@ -123,6 +115,19 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
         // Otherwise, this is a live-out value.
         live_out.push_back(&inst);
       }
+    }
+  }
+
+  // Collect the set of exiting edges from the blockset.
+  llvm::SmallVector<llvm::BasicBlockEdge> exit_edges;
+  for (llvm::BasicBlock *block : blocks) {
+    for (llvm::BasicBlock *succ : llvm::successors(block)) {
+      // Skip local edges.
+      if (blockset.contains(succ))
+        continue;
+
+      // Register the non-local edge.
+      exit_edges.emplace_back(block, succ);
     }
   }
 
