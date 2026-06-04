@@ -268,10 +268,14 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
 
     // Insert a default return value.
     // NOTE: Alternatively, we could call exit() with an unreachable.
-    llvm::Type *ret_type = out_function->getReturnType();
-    llvm::Value *ret_value = llvm::Constant::getNullValue(ret_type);
     builder.SetInsertPoint(exit_block);
-    builder.CreateRet(ret_value);
+
+    llvm::Type *ret_type = out_function->getReturnType();
+    if (ret_type->isVoidTy()) {
+      builder.CreateRetVoid();
+    } else {
+      builder.CreateRet(llvm::Constant::getNullValue(ret_type));
+    }
   }
 
   // Clone over all of the other blocks.
