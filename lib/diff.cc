@@ -88,8 +88,28 @@ static llvm::Function *extract_node(GumNode *node,
   return extract({ node->block }, options);
 }
 
+static bool same_signature(llvm::Function *src, llvm::Function *dst) {
+  // Check that they have the same function type.
+  if (src->getType() != dst->getType())
+    return false;
+
+  // Check that they have the same calling convention.
+  if (src->getCallingConv() != dst->getCallingConv())
+    return false;
+
+  // Check that they have the same attributes.
+  if (src->getAttributes() != dst->getAttributes())
+    return false;
+
+  return true;
+}
+
 DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
   DiffResult result;
+
+  // Check the function signature for differences.
+  if (not same_signature(src, dst))
+    return result;
 
   // Fetch the region information.
   llvm::RegionInfo *src_regions = regions(src), *dst_regions = regions(dst);
