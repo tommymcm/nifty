@@ -43,9 +43,9 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   // live-in values are used in the blocks, but defined outside.
   // live-out valies are defined in the blocks, but used outside.
   llvm::SmallVector<llvm::Value *, 0> live_in, live_out;
-  llvm::DenseSet<llvm::Value *> seen;
   llvm::SmallVector<llvm::BasicBlockEdge> exit_edges;
 
+  llvm::DenseSet<llvm::Value *> seen;
   for (llvm::BasicBlock *block : blocks) {
     for (llvm::Instruction &inst : *block) {
 
@@ -208,12 +208,12 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   auto *entry_block = llvm::BasicBlock::Create(context, "entry", out_function);
 
   // Map all non-local incoming block to the entry block.
-  for (llvm::BasicBlock *succ : llvm::predecessors(first_block)) {
+  for (llvm::BasicBlock *pred : llvm::predecessors(first_block)) {
     // Skip local blocks.
-    if (blockset.contains(succ))
+    if (blockset.contains(pred))
       continue;
 
-    vmap[succ] = entry_block;
+    vmap[pred] = entry_block;
   }
 
   // Create a builder.
