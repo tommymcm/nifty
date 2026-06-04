@@ -119,6 +119,12 @@ inline std::string value_name(const llvm::Value &V) {
   return str;
 }
 
+inline std::string value_name(const llvm::Value *value) {
+  if (not value)
+    return "NULL";
+  return value_name(*value);
+}
+
 } // namespace nifty
 
 #endif // NIFTY_PRINT_H
