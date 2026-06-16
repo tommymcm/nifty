@@ -216,7 +216,7 @@ int main(int argc, char **argv) {
     return 0;
 
   } else if (cmd_strip_tbaa) {
-    strip(*module.get(), { LLVMContext::MD_tbaa });
+    strip(*module.get(), { LLVMContext::MD_tbaa, LLVMContext::MD_noalias });
   }
 
   // Handle output file, if needed.
