@@ -37,7 +37,7 @@ static void collect_dirty_dst(llvm::SmallVector<GumNode *> &dirty,
       current = current->parent;
 
     if (current) {
-      dirty.push_back(node->parent->match);
+      dirty.push_back(current->match);
     }
   }
 
