@@ -106,7 +106,11 @@ static GumNode *find_lca(GumNode *src_root,
       break; // postorder gives us deepest first
     }
   }
-
+  if (lca->is_instr) {
+    std::cerr << "---- LCA IS AN INSTRUCTION ----\n";
+    std::cerr << "---- GOING UP THE TREE FOR A BLOCK ----\n";
+    return lca->parent;
+  }
   return lca;
 }
 
