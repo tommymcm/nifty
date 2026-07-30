@@ -202,8 +202,7 @@ static llvm::raw_ostream &node_name(llvm::raw_ostream &os, GumNode *node) {
   return os;
 }
 
-static llvm::raw_ostream &print(llvm::raw_ostream &os,
-                                GumNode *node,
+static llvm::raw_ostream &print(llvm::raw_ostream &os, GumNode *node,
                                 unsigned indent = 0) {
   std::string pad(indent * 2, ' ');
 
@@ -220,10 +219,12 @@ static llvm::raw_ostream &print(llvm::raw_ostream &os,
 
   // Match status
   if (node->match) {
-    os << " matched=>";
+    if (node->dirty) os << " matched, dirty => ";
+    else
+      os << " matched, clean => ";
     node_name(os, node->match);
   } else {
-    os << " unmatched";
+    os << " unmatched, dirty";
   }
 
   os << "\n";
@@ -236,8 +237,7 @@ static llvm::raw_ostream &print(llvm::raw_ostream &os,
 }
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, GumNode *node) {
-  if (not node)
-    return os << "NULL\n";
+  if (not node) return os << "NULL\n";
   return print(os, node);
 }
 
@@ -609,17 +609,85 @@ GumTree::GumTree(llvm::Function *src,
                  double match_threshold)
   : matches{} {
 
+// ====---- GumTree ----==== //
+GumTree::GumTree(llvm::Function *src, llvm::Function *dst,
+                 llvm::RegionInfo *src_regions, llvm::RegionInfo *dst_regions,
+                 bool refine_top_down, double match_threshold,
+                 DiffStats *diff_stats, std::list<GumNode> *gumnodes)
+    : matches{} {
+  // To prevent any redeclaration/no declaration errors
+  auto start = high_resolution_clock::now();
+  auto end = high_resolution_clock::now();
+  double duration = 0.0;
   // Build GumTree.
-  this->src = build_tree(src, src_regions);
-  this->dst = build_tree(dst, dst_regions);
+  start = high_resolution_clock::now();
+  { this->src = build_tree(src, src_regions, gumnodes); }
+  end = high_resolution_clock::now();
+  duration = duration_cast<microseconds>(end - start).count() / 1000000.0;
+  diff_stats->build_tree_src_duration = duration;
+  diff_stats->src_tree_height = this->src->height;
+
+  start = high_resolution_clock::now();
+  { this->dst = build_tree(dst, dst_regions, gumnodes); }
+  end = high_resolution_clock::now();
+  duration = duration_cast<microseconds>(end - start).count() / 1000000.0;
+  diff_stats->build_tree_tgt_duration = duration;
+  diff_stats->tgt_tree_height = this->dst->height;
+
+  diff_stats->build_tree_duration =
+      diff_stats->build_tree_src_duration + diff_stats->build_tree_tgt_duration;
 
   // Match GumTree.
-  top_down(this->src, this->dst, this->matches);
-  bottom_up(this->src,
-            this->dst,
-            this->matches,
-            refine_top_down,
-            match_threshold);
-}
 
+  start = high_resolution_clock::now();
+
+  { top_down(this->src, this->dst, this->matches); }
+
+  end = high_resolution_clock::now();
+  duration = duration_cast<microseconds>(end - start).count() / 1000000.0;
+  diff_stats->top_down_duration = duration;
+  start = high_resolution_clock::now();
+
+  { // COCKA2 TODO: also  measures calling refine_top_down, that one must be
+    // separate
+    bottom_up(this->src, this->dst, this->matches, refine_top_down,
+              match_threshold);
+  }
+  end = high_resolution_clock::now();
+
+  duration = duration_cast<microseconds>(end - start).count() / 1000000.0;
+
+  diff_stats->bottom_up_duration = duration;
+  if (!refine_top_down) diff_stats->refine_top_down_duration = 0.0;
+  // COCKA2 TODO: record the time taken in perf
+  match_instructions(this->src, this->matches);
+
+  diff_stats->gum_tree_duration = diff_stats->top_down_duration +
+                                  diff_stats->bottom_up_duration +
+                                  diff_stats->refine_top_down_duration;
+}
+void GumTree::compute_lca_map(llvm::SmallVector<GumNode *> dirty,
+                              DiffStats *diff_stats) {
+  for (auto *curr : dirty) {
+    // GumNode cannot be verified if it is unmatched
+    if (!curr->match) curr = curr->parent;
+    while (curr) {
+      unsigned height = curr->height + 1;
+      if (!lca_map.contains(height)) {
+        lca_map[height] = llvm::DenseSet<GumNode *>();
+        lca_map_count[height] = 0;
+      }
+      if (!lca_map[height].contains(curr)) {
+        lca_map[height].insert(curr);
+      }
+
+      lca_map_count[height] = lca_map[height].size();
+
+      curr = curr->parent;
+      height++;
+    }
+  }
+  // Copy the results to DiffStats class
+  diff_stats->lca_map_count = lca_map_count;
+}
 } // namespace nifty
