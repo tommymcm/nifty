@@ -12,6 +12,7 @@
 #include <llvm/Support/raw_ostream.h>
 
 #include "nifty/assert.hh"
+#include "nifty/constraints.hh"
 #include "nifty/diff.hh"
 #include "nifty/extract.hh"
 #include "nifty/print.hh"
@@ -24,21 +25,19 @@ using namespace llvm;
 cl::SubCommand cmd_extract("extract", "Extract parts of the IR");
 cl::SubCommand cmd_diff("diff", "SESE difference of two IRs");
 cl::SubCommand cmd_strip_tbaa("strip-tbaa", "Strip TBAA metadata");
+cl::SubCommand cmd_constraints("infer-constraints",
+                               "Insert assumptions from conditional checks");
 
 // ====---- Options ----==== //
 cl::opt<std::string> opt_inpath( //
     cl::Positional,
     cl::desc("<input>"),
-    cl::sub(cmd_extract),
-    cl::sub(cmd_diff),
-    cl::sub(cmd_strip_tbaa));
+    cl::sub(cl::SubCommand::getAll()));
 
 cl::opt<std::string> opt_outpath( //
     "o",
     cl::desc("output file"),
-    cl::sub(cmd_extract),
-    cl::sub(cmd_diff),
-    cl::sub(cmd_strip_tbaa));
+    cl::sub(cl::SubCommand::getAll()));
 
 cl::opt<bool> opt_verbose( //
     "v",
@@ -92,6 +91,12 @@ cl::opt<bool> opt_diff_dump_gumtree( //
     "dump-gumtree",
     cl::desc("dump intermediate GumTree to stdout"),
     cl::sub(cmd_diff));
+
+// -------- Infer Constraints options -------- //
+cl::opt<bool> opt_constraints_propagate( //
+    "propagate-constraints",
+    cl::desc("Propagate constraints to all relevant uses"),
+    cl::sub(cmd_constraints));
 
 // ====---- Output ----==== //
 int write(StringRef outpath, const llvm::Module &module) {
@@ -217,6 +222,12 @@ int main(int argc, char **argv) {
 
   } else if (cmd_strip_tbaa) {
     strip(*module.get(), { LLVMContext::MD_tbaa, LLVMContext::MD_noalias });
+
+  } else if (cmd_constraints) {
+    ConstraintOptions options;
+    options.propagate = opt_constraints_propagate;
+
+    infer_constraints(*module.get(), options);
   }
 
   // Handle output file, if needed.

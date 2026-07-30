@@ -87,4 +87,14 @@ bool infer_constraints(llvm::Function *function, ConstraintOptions options) {
   return modified;
 }
 
+bool infer_constraints(llvm::Module &module, ConstraintOptions options) {
+  bool modified = false;
+
+  for (llvm::Function &function : module) {
+    modified |= infer_constraints(&function, options);
+  }
+
+  return modified;
+}
+
 } // namespace nifty
