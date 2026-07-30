@@ -113,7 +113,7 @@ static GumNode *find_lca(GumNode *src_root,
   }
   return lca;
 }
-  
+
 static void subtree_sizes(GumNode *src_root,
                           llvm::DenseMap<GumNode *, unsigned> *size) {
   unsigned s = 1;
@@ -139,10 +139,10 @@ static void dirty_subtree_sizes(GumNode *src_root,
 }
 static llvm::Function *extract_node(GumNode *node,
                                     const ExtractOptions &options) {
-  if (llvm::Region *region = node->region)
-    return extract(region, options);
+  if (llvm::Region *region = node->region) return extract(region, options);
+  if (!node->is_block) std::cerr << "Passed node is not a block\n";
 
-  return extract({ node->block }, options);
+  return extract({node->block}, options);
 }
 
 static bool same_signature(llvm::Function *src, llvm::Function *dst) {
