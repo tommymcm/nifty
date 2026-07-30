@@ -184,12 +184,16 @@ llvm::SmallVector<GumNode *> GumNode::postorder() {
 
 static llvm::raw_ostream &node_name(llvm::raw_ostream &os, GumNode *node) {
   // Is this a leaf (no children = plain BB) or an internal this (region)?
-  os << (node->children.empty() ? "Block" : "Region");
+  os << (node->instr ? "Instruction" : node->region ? "Region" : "Block");
 
   // BB name or number
   if (node->block) {
     os << "[";
     node->block->printAsOperand(os, false);
+    os << "]";
+  } else if (node->instr) {
+    os << "[";
+    node->instr->print(os);
     os << "]";
   } else {
     os << "[?]";
