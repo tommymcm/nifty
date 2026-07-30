@@ -827,24 +827,53 @@ static void bottom_up(GumNode *src, GumNode *dst, GumMatches &matches,
 
     if (best) {
       matches[s] = best;
+      matches[best] = s;
       best->match = s;
       s->match = best;
 
       // Optionally, recover any missed subtree matches.
-      if (refine_top_down)
-        top_down(s, best, matches);
+      if (refine_top_down) top_down(s, best, matches);
     }
   }
 }
 
-// ====---- GumTree ----==== //
-GumTree::GumTree(llvm::Function *src,
-                 llvm::Function *dst,
-                 llvm::RegionInfo *src_regions,
-                 llvm::RegionInfo *dst_regions,
-                 bool refine_top_down,
-                 double match_threshold)
-  : matches{} {
+static void match_instructions(GumNode *src, GumMatches &matches) {
+  // Instruction
+  if (src->is_instr) return;
+
+  if (!src->is_block) {
+    if (src->is_region) {
+      for (GumNode *child : src->children)
+        match_instructions(child, matches);
+      // Neither a block nor a region, must be an instruction, thus returned
+      // previously
+    }
+    return;
+  }
+
+  // Block
+  if (!src->match) return;
+
+  GumNode *match = src->match;
+  // COCKA2 TODO: as of now only match instructions in case their count is the
+  // same
+
+  if (src->block->size() != match->block->size()) return;
+  for (llvm::SmallVector<GumNode *>::iterator
+           src_it = src->children.begin(),
+           match_it = match->children.begin(), src_end = src->children.end();
+       src_it != src_end; src_it++, match_it++) {
+    GumNode *src_node = *src_it, *match_node = *match_it;
+    llvm::Instruction *src_instr = src_node->instr,
+                      *match_instr = match_node->instr;
+    if (src_instr->getOpcode() == match_instr->getOpcode()) {
+      matches[src_node] = match_node;
+      matches[match_node] = src_node;
+      src_node->match = match_node;
+      match_node->match = src_node;
+    }
+  }
+}
 
 // ====---- GumTree ----==== //
 GumTree::GumTree(llvm::Function *src, llvm::Function *dst,
