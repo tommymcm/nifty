@@ -7,8 +7,7 @@
 namespace nifty {
 
 struct ConstraintOptions {
-  /** Propagate constraints to uses. */
-  bool propagate = false;
+  // None yet :)
 };
 
 /**

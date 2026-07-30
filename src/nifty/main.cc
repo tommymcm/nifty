@@ -92,12 +92,6 @@ cl::opt<bool> opt_diff_dump_gumtree( //
     cl::desc("dump intermediate GumTree to stdout"),
     cl::sub(cmd_diff));
 
-// -------- Infer Constraints options -------- //
-cl::opt<bool> opt_constraints_propagate( //
-    "propagate-constraints",
-    cl::desc("Propagate constraints to all relevant uses"),
-    cl::sub(cmd_constraints));
-
 // ====---- Output ----==== //
 int write(StringRef outpath, const llvm::Module &module) {
   if (outpath.empty()) {
@@ -225,8 +219,6 @@ int main(int argc, char **argv) {
 
   } else if (cmd_constraints) {
     ConstraintOptions options;
-    options.propagate = opt_constraints_propagate;
-
     infer_constraints(*module.get(), options);
   }
 
