@@ -4,14 +4,21 @@
 #include <llvm/Analysis/RegionInfo.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Function.h>
+#include <llvm/IR/Instruction.h>
 
+#include "nifty/diff.hh"
+#include "nifty/perf.hh"
 namespace nifty {
 
 struct GumNode {
-  /** Entry block for the region */
-  llvm::BasicBlock *block;
+  /** Entry block for the region, null for an instruction */
+  llvm::BasicBlock *block = nullptr;
   /** Region (or null, if this is a leaf)*/
   llvm::Region *region = nullptr;
+  /** Instruction (null otherwise) */
+  llvm::Instruction *instr = nullptr;
+  /** Is this a region, block, or an instruction */
+  bool is_region = false, is_block = false, is_instr = false;
   /** Block hash */
   uint64_t label;
   /** Combined block hashes of children */
@@ -20,6 +27,7 @@ struct GumNode {
   unsigned height = 0;
   /** Postorder traversal index, for ordering during matching*/
   int postorder_index = 0;
+  
 
   /** Direct parent region, NULL if root */
   GumNode *parent = nullptr;
@@ -29,6 +37,12 @@ struct GumNode {
   // Matching state
   GumNode *match = nullptr;
 
+  // Whether marked as dirty
+  bool dirty = false;
+
+  /** Construct a node for the instruction */
+  GumNode(llvm::Instruction *instr,
+          const llvm::DenseMap<llvm::Value *, uint64_t> &cache);
   /** Construct a node for the basic block */
   GumNode(llvm::BasicBlock *block,
           const llvm::DenseMap<llvm::Value *, uint64_t> &cache);
