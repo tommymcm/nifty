@@ -125,6 +125,18 @@ static void subtree_sizes(GumNode *src_root,
   return;
 }
 
+static void dirty_subtree_sizes(GumNode *src_root,
+                                llvm::DenseMap<GumNode *, unsigned> *size,
+                                const llvm::SmallVector<GumNode *> &dirty) {
+  for (GumNode *node : dirty) {
+    GumNode *current = node;
+    while (current) {
+      ++((*size)[current]);
+      current = current->parent;
+    }
+  }
+  return;
+}
 static llvm::Function *extract_node(GumNode *node,
                                     const ExtractOptions &options) {
   if (llvm::Region *region = node->region)
