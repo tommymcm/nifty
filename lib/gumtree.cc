@@ -1,14 +1,26 @@
 #include <llvm/ADT/Hashing.h>
 #include <llvm/ADT/PostOrderIterator.h>
+#include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/SetOperations.h>
+#include <llvm/ADT/SmallVector.h>
+#include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/Analysis/RegionInfo.h>
+#include <llvm/IR/CFG.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/InstIterator.h>
+#include <llvm/IR/Instructions.h>
 
 #include "nifty/assert.hh"
 #include "nifty/cast.hh"
 #include "nifty/diff.hh"
 #include "nifty/gumtree.hh"
+#include "nifty/perf.hh"
 #include "nifty/regions.hh"
+
+#include <chrono>
+#include <iostream>
+
+using namespace std::chrono;
 
 namespace nifty {
 
@@ -23,19 +35,59 @@ static uint64_t compute_hash(
     const llvm::DenseMap<llvm::Value *, uint64_t> &cache,
     llvm::BasicBlock *block) {
   uint64_t h = 0;
-  for (llvm::Instruction &inst : *block)
-    h = combine_hash(h, cache.lookup(&inst));
-  h = combine_hash(h, block->isEntryBlock());
+  //  for (llvm::Instruction &inst : *block)
+  //    h = combine_hash(h, cache.lookup(&inst));
+  h = combine_hash(h, block->isEntryBlock() ? 1 : 0);
   llvm::Instruction *term = block->getTerminator();
-  h = combine_hash(h, term->getNumSuccessors());
-  // TODO: add PST-specific components
+  // h = combine_hash(h, cache.lookup(term));
+
+  // Encode number of predecessors
+  h = combine_hash(h, llvm::pred_size(block));
+
+  // Encode predecessors' hashes
+  for (auto *pred : llvm::predecessors(block)) {
+    h = combine_hash(h, cache.lookup(pred));
+    llvm::Instruction *pred_term = pred->getTerminator();
+    if (auto *cond_br = dyn_cast<llvm::CondBrInst>(pred_term)) {
+      if (block == pred_term->getSuccessor(0)) // true branch
+        h = combine_hash(h, 1);
+      if (block == pred_term->getSuccessor(1)) h = combine_hash(h, 2);
+    }
+  }
+
+  // Encode CFG information through terminators
+
+  // Unconditional branch -> additional parameter, so that blocks and their
+  // terminators have different hashes
+  if (auto *uncond_br = dyn_cast<llvm::UncondBrInst>(term))
+    h = llvm::hash_combine(h, 1);
+
+  // Conditional branch COCKA2 TODO: lookup in the cache or LLVM's hash combine
+  if (auto *cond_br = dyn_cast<llvm::CondBrInst>(term)) {
+    // h = combine_hash(h, cache.lookup(cond_br->getCondition()));
+    h = llvm::hash_combine(h, 2);
+  }
+
+  // Return
+  if (auto *ret = dyn_cast<llvm::ReturnInst>(term)) {
+    h = llvm::hash_combine(h, 3);
+    // h = combine_hash(h, cache.lookup(ret->getReturnValue()));
+  }
+  // COCKA2 TODO: other terminators
   return h;
 }
 
 static uint64_t compute_hash(
     const llvm::DenseMap<llvm::Value *, uint64_t> &cache,
     llvm::Region *region) {
-  return compute_hash(cache, region->getEntry());
+  auto found = cache.find(region->getEntry());
+  if (found != cache.end()) return found->second;
+
+  uint64_t h = compute_hash(cache, region->getEntry());
+  h = combine_hash(
+      h, region->isSubRegion() ? 2 : 1); // not zero to ensure regions and their
+                                         // entry blocks have different hashes
+  return h;
 }
 
 static uint64_t hash_type(llvm::Type *type) {
@@ -44,8 +96,7 @@ static uint64_t hash_type(llvm::Type *type) {
                               type->getIntegerBitWidth());
   if (type->isFloatingPointTy())
     return llvm::hash_combine(llvm::StringRef("fp"), type->getTypeID());
-  if (type->isPointerTy())
-    return llvm::hash_combine(llvm::StringRef("ptr"));
+  if (type->isPointerTy()) return llvm::hash_combine(llvm::StringRef("ptr"));
   if (type->isArrayTy())
     return llvm::hash_combine(llvm::StringRef("array"),
                               type->getArrayNumElements(),
@@ -59,10 +110,9 @@ static uint64_t hash_type(llvm::Type *type) {
   }
   if (auto *vec_type = dyn_cast<llvm::VectorType>(type)) {
     llvm::ElementCount elem_count = vec_type->getElementCount();
-    return llvm::hash_combine(llvm::StringRef("vec"),
-                              elem_count.getKnownMinValue(),
-                              elem_count.isScalable(),
-                              hash_type(vec_type->getElementType()));
+    return llvm::hash_combine(
+        llvm::StringRef("vec"), elem_count.getKnownMinValue(),
+        elem_count.isScalable(), hash_type(vec_type->getElementType()));
   }
   return llvm::hash_combine(type->getTypeID());
 }
@@ -88,11 +138,9 @@ static uint64_t hash_constant(llvm::Constant *constant) {
 
 static uint64_t hash_value(llvm::DenseMap<llvm::Value *, uint64_t> &cache,
                            llvm::DenseSet<llvm::Value *> &in_progress,
-                           llvm::Value *value,
-                           llvm::Region *region) {
+                           llvm::Value *value, llvm::Region *region) {
   auto found = cache.find(value);
-  if (found != cache.end())
-    return found->second;
+  if (found != cache.end()) return found->second;
 
   // Cycle detected, return a stable placeholder until we can resolve it.
   if (in_progress.contains(value))
@@ -102,18 +150,38 @@ static uint64_t hash_value(llvm::DenseMap<llvm::Value *, uint64_t> &cache,
 
   uint64_t h = 0;
 
-  // Handle constants.
+  // Handle constants
   if (auto *constant = dyn_cast<llvm::Constant>(value)) {
     h = hash_constant(constant);
 
   } else if (auto *arg = dyn_cast<llvm::Argument>(value)) {
     h = llvm::hash_combine(llvm::StringRef("arg"), arg->getArgNo());
 
-  } else if (auto *inst = dyn_cast<llvm::Instruction>(value)) {
+  }
+  // Handle constants
+  else if (auto *inst = dyn_cast<llvm::Instruction>(value)) {
     h = llvm::hash_combine(inst->getOpcode(), inst->getType());
+    // Encode type for memory instructions
+
+    // Alloca
+    if (auto *alloca = dyn_cast<llvm::AllocaInst>(inst))
+      h = llvm::hash_combine(h, alloca->getAllocatedType());
+
+    // Load
+    if (auto *load = dyn_cast<llvm::LoadInst>(inst)) {
+      h = llvm::hash_combine(h, load->getPointerOperandType());
+      h = llvm::hash_combine(h, cache.lookup(load->getPointerOperand()));
+    }
+
+    // Store
+    if (auto *store = dyn_cast<llvm::StoreInst>(inst)) {
+      h = llvm::hash_combine(h, store->getPointerOperandType());
+      h = llvm::hash_combine(h, cache.lookup(store->getPointerOperand()));
+    }
+
+    // COCKA2 TODO: other memory instructions
     for (llvm::Value *op : inst->operands())
       h = llvm::hash_combine(h, hash_value(cache, in_progress, op, region));
-
   } else { // external value
     h = llvm::hash_combine(llvm::StringRef("extern"), value->getType());
   }
@@ -134,30 +202,33 @@ static void hash_instructions(llvm::DenseMap<llvm::Value *, uint64_t> &cache,
   llvm::ReversePostOrderTraversal<llvm::Function *> rpo_traversal(function);
   for (llvm::BasicBlock *block : rpo_traversal) {
     llvm::Region *region = region_info->getRegionFor(block);
-    for (llvm::Instruction &inst : *block) {
+    for (llvm::Instruction &inst : *block)
       hash_value(cache, in_progress, &inst, region);
-    }
   }
 
   return;
 }
 
 // ====---- GumNode ----==== //
+GumNode::GumNode(llvm::Instruction *instr,
+                 const llvm::DenseMap<llvm::Value *, uint64_t> &cache)
+    : instr{instr}, block{nullptr},
+      label{cache.lookup(instr)}, // COCKA2 TODO : is this correct?
+      children{} {
+  this->subtree_hash = this->label; // COCKA2 TODO:  WHY?
+}
+
 GumNode::GumNode(llvm::BasicBlock *block,
                  const llvm::DenseMap<llvm::Value *, uint64_t> &cache)
-  : block{ block },
-    label{ compute_hash(cache, block) },
-    children{} {
-  this->subtree_hash = uint64_t(this->label);
+    : block{block}, label{compute_hash(cache, block)}, children{} {
+  this->subtree_hash = this->label;
 }
 
 GumNode::GumNode(llvm::Region *region,
                  const llvm::DenseMap<llvm::Value *, uint64_t> &cache)
-  : block{ region->getEntry() },
-    region{ region },
-    label{ compute_hash(cache, region) },
-    children{} {
-  this->subtree_hash = uint64_t(this->label);
+    : block{region->getEntry()}, region{region},
+      label{compute_hash(cache, region)}, children{} {
+  this->subtree_hash = this->label;
 }
 
 llvm::SmallVector<GumNode *> GumNode::postorder() {
@@ -171,9 +242,8 @@ llvm::SmallVector<GumNode *> GumNode::postorder() {
     GumNode *node = stack.pop_back_val();
     result.push_back(node);
 
-    for (GumNode *child : node->children) {
+    for (GumNode *child : node->children)
       stack.push_back(child);
-    }
   }
 
   // Reverse to get the postorder.
@@ -242,6 +312,34 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, GumNode *node) {
 }
 
 // ====---- Initialization ----==== //
+
+static GumNode *build_block(
+    llvm::BasicBlock *block,
+    const llvm::DenseMap<llvm::BasicBlock *, unsigned> &rpo_index,
+    const llvm::DenseMap<llvm::Value *, uint64_t> &hashes,
+    std::list<GumNode> *gumnodes) {
+  gumnodes->push_back(GumNode(block, hashes));
+  GumNode *node = &gumnodes->back();
+
+  node->is_block = true;
+  // Build direct instruction children
+  unsigned counter = 0;
+  for (llvm::Instruction &instr : *block) {
+    counter++;
+    // Notes: rpo_index for instructions is not needed
+    gumnodes->push_back(GumNode(&instr, hashes));
+    GumNode *child = &gumnodes->back();
+    child->is_instr = true;
+    child->parent = node;
+    node->children.push_back(child);
+
+    // Computing the subtree hash
+    node->subtree_hash = combine_hash(node->subtree_hash, child->label);
+  }
+  node->height = 1;
+  return node;
+}
+
 static GumNode *build_region(
     llvm::Region *region,
     const llvm::DenseMap<llvm::BasicBlock *, unsigned> &rpo_index,
