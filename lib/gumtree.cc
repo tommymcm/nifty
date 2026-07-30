@@ -408,14 +408,15 @@ static GumNode *build_region(
   return node;
 }
 
-GumNode *build_tree(llvm::Function *function, llvm::RegionInfo *regions) {
-  debugln("==== Build Tree ====");
+GumNode *build_tree(llvm::Function *function, llvm::RegionInfo *regions,
+                    std::list<GumNode> *gumnodes) {
+  // debugln("==== Build Tree ====");
 
-  debugln("---- Hash Instructions ----");
+  // debugln("---- Hash Instructions ----");
   llvm::DenseMap<llvm::Value *, uint64_t> inst_hashes;
   hash_instructions(inst_hashes, function, regions);
 
-  debugln("---- Compute Reverse Post-Order ----");
+  // debugln("---- Compute Reverse Post-Order ----");
   llvm::ReversePostOrderTraversal<llvm::Function *> rpo_traversal(function);
 
   // debugln(" COCKA2 TODO---- Generate Branching Assumptions ----");
@@ -435,9 +436,13 @@ static void match_subtree(GumNode *src, GumNode *dst, GumMatches &matches) {
 
   // Record the match.
   matches[src] = dst;
+  matches[dst] = src;
   // Record the match in the nodes.
+  NIFTY_ASSERT(!dst->match, "Change of matching in match_subtree\n");
   dst->match = src;
+  NIFTY_ASSERT(!src->match, "Change of matching in match_subtree\n");
   src->match = dst;
+
   // Recurse on children.
   for (auto [sc, dc] : llvm::zip(src->children, dst->children))
     match_subtree(sc, dc, matches);
@@ -455,6 +460,35 @@ static double ancestor_dice(GumNode *src, GumNode *can, GumMatches &matches) {
   unsigned matched = 0, total = 0;
   GumNode *s = src->parent;
   GumNode *c = can->parent;
+
+  llvm::DenseSet<GumNode *> src_matches, dst_anc;
+  // Collecting matches of src node ancestors
+  while (s) {
+    if (s->match) src_matches.insert(s->match);
+    // auto it = matches.find(s);
+    // if (it != matches.end()) {
+    //   src_matches.insert(it->second);
+    // }
+    s = s->parent;
+  }
+  // Collecting dst node ancestors
+  while (c) {
+    dst_anc.insert(c);
+    c = c->parent;
+  }
+
+  // Using Jaccard index = intersection / union
+  llvm::DenseSet<GumNode *> in, un;
+  in = llvm::set_intersection(src_matches, dst_anc);
+
+  un = src_matches;
+
+  llvm::set_union(un, dst_anc);
+
+  unsigned in_size = in.size(), un_size = un.size();
+
+  if (!un_size) return 0.0;
+  return (double)in_size / un_size;
 
   while (s and c) {
     auto it = matches.find(s);
@@ -491,14 +525,88 @@ static GumNode *best_candidate(GumNode *src,
             *can_prev_sibling = prev_sibling(can);
     if (src_prev_sibling and can_prev_sibling) {
       auto it = matches.find(src_prev_sibling);
-      if (it != matches.end() and it->second == can_prev_sibling)
-        score += 1.0;
+      if (it != matches.end() and it->second == can_prev_sibling) score += 1.0;
     }
 
     // Signal 3: dice similarity of already-matched ancestors
     // Handles the case where neither parent nor sibling is matched yet
+
     score += 0.5 * ancestor_dice(src, can, matches);
 
+    // More granular scoring for terminator instructions as of now, COCKA2 TODO:
+    // extend to non-terminator instructions, regions and blocks
+
+    if (src->instr && can->instr) {
+      llvm::Instruction *s = src->instr, *c = can->instr;
+      unsigned s_code = s->getOpcode(), c_code = c->getOpcode();
+      double instr_score = 0.5;
+      // For all instructions
+
+      // Instruction type 1 : Terminators
+      if (s->isTerminator()) {
+        switch (s_code) {
+        case llvm::Instruction::UncondBr:
+          // COCKA2 TODO:See if the hashes of the blocks they are branching to
+          // are the same
+
+          // Compare syntactic equality of blocks being branched on
+          {
+            llvm::BasicBlock *s_br_block = s->getSuccessor(0),
+                             *c_br_block = c->getSuccessor(0);
+            if (s_br_block->hasName() && c_br_block->hasName() &&
+                s_br_block->getName().equals_insensitive(c_br_block->getName()))
+              score += instr_score;
+
+            instr_score /= 2;
+          }
+
+          break;
+        case llvm::Instruction::CondBr: {
+          llvm::CondBrInst *s_cast = llvm::dyn_cast<llvm::CondBrInst>(s);
+          llvm::CondBrInst *c_cast = llvm::dyn_cast<llvm::CondBrInst>(c);
+          llvm::Value *s_cond = s_cast->getCondition(),
+                      *c_cond = c_cast->getCondition();
+          if (s_cond->hasName() && c_cond->hasName() &&
+              !s_cond->getName().compare(c_cond->getName()))
+            score += instr_score;
+          instr_score /= 2;
+          // Blocks branched to are syntactically equal
+          llvm::BasicBlock *s_block_1 = s_cast->getSuccessor(0),
+                           *s_block_2 = s_cast->getSuccessor(1),
+                           *c_block_1 = c_cast->getSuccessor(0),
+                           *c_block_2 = c_cast->getSuccessor(1);
+
+          // First src block == first can block, and vice versa
+
+          if (s_block_1->hasName() && c_block_1->hasName() &&
+              s_block_1->getName().equals_insensitive(c_block_1->getName()))
+            score += instr_score / 2.0;
+          if (s_block_2->hasName() && c_block_2->hasName() &&
+              s_block_2->getName().equals_insensitive(c_block_2->getName()))
+            score += instr_score / 2.0;
+          instr_score /= 2;
+
+          // First src block == second can block, and vice versa
+          if (s_block_1->hasName() && c_block_2->hasName() &&
+              s_block_1->getName().equals_insensitive(c_block_2->getName()))
+            score += instr_score / 2.0;
+          if (s_block_2->hasName() && c_block_1->hasName() &&
+              s_block_2->getName().equals_insensitive(c_block_1->getName()))
+            score += instr_score / 2.0;
+          instr_score /= 2;
+
+        } break;
+        case llvm::Instruction::Ret:
+          std::cout << s->getOpcodeName()
+                    << " instruction is not handled in best_candidate\n";
+          break;
+        default:
+          std::cout << s->getOpcodeName()
+                    << " instruction is not handled in best_candidate\n";
+          break;
+        }
+      }
+    }
     if (score > best_score) {
       best_score = score;
       best = can;
@@ -549,18 +657,57 @@ static void top_down(GumNode *src, GumNode *dst, GumMatches &matches) {
     // Fetch the nodes at the shared height.
     auto &src_nodes = src_begin->second, &dst_nodes = dst_begin->second;
 
-    debugln("# SRC NODES ", src_nodes.size());
-    debugln("# DST NODES ", dst_nodes.size());
+    // debugln("# SRC NODES ", src_nodes.size());
+    // debugln("# DST NODES ", dst_nodes.size());
 
     // Group dst nodes by subtree hash for fast lookup.
-    llvm::DenseMap<uint64_t, llvm::SmallVector<GumNode *>> dst_by_hash;
+    llvm::DenseMap<uint64_t, llvm::SmallVector<GumNode *>> dst_by_subtree_hash,
+        dst_by_hash;
     for (GumNode *n : dst_nodes) {
-      dst_by_hash[n->subtree_hash].push_back(n);
+      dst_by_subtree_hash[n->subtree_hash].push_back(n);
+      dst_by_hash[n->label].push_back(n);
     }
 
     // Heights are equal, try to match by subtree hash.
+
     for (GumNode *s : src_nodes) {
-      auto it = dst_by_hash.find(s->subtree_hash);
+      // Skip if matched in the previous top-down phase by subtree hashes
+      if (s->match && s->match->subtree_hash == s->subtree_hash) {
+        for (auto *c : s->children)
+          push_open(c, src_queue);
+        continue;
+      }
+      bool subtree_matching = false;
+      auto it = dst_by_subtree_hash.find(s->subtree_hash);
+      if (it != dst_by_subtree_hash.end()) subtree_matching = true;
+      if (subtree_matching) {
+
+        auto &candidates = it->second;
+
+        // Filtering out matched candidates
+        auto filter = [matches](GumNode *cons) {
+          return !matches.contains(cons);
+        };
+        candidates = llvm::filter_to_vector(candidates, filter);
+        // Unique match at this height, commit entire isomorphic subtree.
+        if (candidates.size() == 1) {
+          GumNode *candidate = candidates.front();
+          match_subtree(s, candidate, matches);
+          continue;
+        }
+
+        // Ambiguous, find best candidate by position similarity.
+
+        GumNode *best = best_candidate(s, candidates, matches);
+        if (best) {
+          match_subtree(s, best, matches);
+          continue;
+        }
+      }
+      // No candidate -> match based on labels (local hash information) instead
+      // of subtree-hashing
+
+      it = dst_by_hash.find(s->label);
       if (it == dst_by_hash.end()) {
         // No match at this height, push children to try smaller subtrees.
         for (auto *c : s->children)
@@ -569,29 +716,38 @@ static void top_down(GumNode *src, GumNode *dst, GumMatches &matches) {
       }
 
       auto &candidates = it->second;
-
+      // Filtering out matched candidates
+      auto filter = [matches](GumNode *cons) {
+        return !matches.contains(cons);
+      };
+      candidates = llvm::filter_to_vector(candidates, filter);
       // Unique match at this height, commit entire isomorphic subtree.
       if (candidates.size() == 1) {
         GumNode *candidate = candidates.front();
-        match_subtree(s, candidate, matches);
-        continue;
+        matches[s] = candidate;
+        matches[candidate] = s;
+        s->match = candidate;
+        candidate->match = s;
       }
 
       // Ambiguous, find best candidate by position similarity.
-      GumNode *best = best_candidate(s, candidates, matches);
-      if (best) {
-        match_subtree(s, best, matches);
-        continue;
-      }
 
-      // No match at this height, push children to try smaller subtrees.
+      auto *best = best_candidate(s, candidates, matches);
+      if (best) {
+        matches[s] = best;
+        matches[best] = s;
+        s->match = best;
+        best->match = s;
+      }
+      // Push children to try smaller subtrees.
       for (auto *c : s->children)
         push_open(c, src_queue);
     }
 
     // Dst unmatched => push its children
     for (GumNode *d : dst_nodes) {
-      if (not d->match)
+      // Not matched or matched during the bottom-up phase instead of top-down
+      if (not d->match || (d->match->subtree_hash != d->subtree_hash))
         for (GumNode *c : d->children)
           push_open(c, dst_queue);
     }
@@ -658,21 +814,11 @@ static void bottom_up(GumNode *src, GumNode *dst, GumMatches &matches,
 
     for (GumNode *d : dst->postorder()) {
       // Already matched.
-      if (d->match)
-        continue;
+      if (d->match) continue;
       // Local information does not match.
-      if (d->label != s->label)
-        continue;
-
-      // Leaves trivially match.
-      bool d_is_leaf = d->children.empty();
-      if (s_is_leaf and d_is_leaf) {
-        best = d;
-        break;
-      }
-
+      double d_dice = 0.0;
       // Internal nodes match on dice threshold.
-      double d_dice = dice(s, d, matches);
+      d_dice = dice(s, d, matches);
       if (d_dice >= dice_threshold and d_dice > best_dice) {
         best_dice = d_dice;
         best = d;
