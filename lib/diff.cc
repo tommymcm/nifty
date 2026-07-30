@@ -113,6 +113,17 @@ static GumNode *find_lca(GumNode *src_root,
   }
   return lca;
 }
+  
+static void subtree_sizes(GumNode *src_root,
+                          llvm::DenseMap<GumNode *, unsigned> *size) {
+  unsigned s = 1;
+  for (GumNode *n : src_root->children) {
+    subtree_sizes(n, size);
+    s += (*size)[n];
+  }
+  (*size)[src_root] = s;
+  return;
+}
 
 static llvm::Function *extract_node(GumNode *node,
                                     const ExtractOptions &options) {
