@@ -6,6 +6,17 @@
 #include "nifty/gumtree.hh"
 #include "nifty/regions.hh"
 
+
+#include <chrono>
+#include <iostream>
+
+// MACROS
+#define clock_now() high_resolution_clock::now()
+#define compute_duration()                                                     \
+  duration_cast<microseconds>(end - start).count() / 1000000.0
+
+using namespace std::chrono;
+
 namespace nifty {
 
 static void collect_dirty_src(llvm::SmallVector<GumNode *> &dirty,
