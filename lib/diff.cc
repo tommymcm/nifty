@@ -6,7 +6,6 @@
 #include "nifty/gumtree.hh"
 #include "nifty/regions.hh"
 
-
 #include <chrono>
 #include <iostream>
 
@@ -21,14 +20,23 @@ namespace nifty {
 
 static void collect_dirty_src(llvm::SmallVector<GumNode *> &dirty,
                               GumNode *node) {
+  // Prevent duplicates in the vector
+  if (!node->dirty) {
+    if (not node->match) {
+      // unmatched => added or removed
+      dirty.push_back(node);
+      node->dirty = true;
 
-  if (not node->match) {
-    // unmatched => added or removed
-    dirty.push_back(node);
-
-  } else if (node->label != node->match->label) {
-    // matched, but different hash => modified
-    dirty.push_back(node);
+      // The parent MUST be dirty
+      if (node->parent && !node->parent->dirty) {
+        dirty.push_back(node->parent);
+        node->parent->dirty = true;
+      }
+    } else if (node->label != node->match->label) {
+      // matched, but different hash => modified.
+      dirty.push_back(node);
+      node->dirty = true;
+    }
   }
 
   // Recurse on children.
