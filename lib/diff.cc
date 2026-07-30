@@ -147,16 +147,13 @@ static llvm::Function *extract_node(GumNode *node,
 
 static bool same_signature(llvm::Function *src, llvm::Function *dst) {
   // Check that they have the same function type.
-  if (src->getType() != dst->getType())
-    return false;
+  if (src->getType() != dst->getType()) return false;
 
   // Check that they have the same calling convention.
-  if (src->getCallingConv() != dst->getCallingConv())
-    return false;
+  if (src->getCallingConv() != dst->getCallingConv()) return false;
 
   // Check that they have the same attributes.
-  if (src->getAttributes() != dst->getAttributes())
-    return false;
+  if (src->getAttributes() != dst->getAttributes()) return false;
 
   return true;
 }
