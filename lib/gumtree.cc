@@ -343,10 +343,14 @@ static GumNode *build_block(
 static GumNode *build_region(
     llvm::Region *region,
     const llvm::DenseMap<llvm::BasicBlock *, unsigned> &rpo_index,
-    const llvm::DenseMap<llvm::Value *, uint64_t> &hashes) {
+    const llvm::DenseMap<llvm::Value *, uint64_t> &hashes,
+    std::list<GumNode> *gumnodes) {
 
   // Create a node for this region.
-  auto *node = new GumNode(region, hashes);
+  gumnodes->push_back(GumNode(region, hashes));
+  GumNode *node = &gumnodes->back();
+
+  node->is_region = true;
 
   { // Build the children.
 
@@ -356,7 +360,8 @@ static GumNode *build_region(
     // Build direct subregion children.
     for (std::unique_ptr<llvm::Region> &sub_region : *region) {
       unsigned index = rpo_index.lookup(sub_region->getEntry());
-      GumNode *child = build_region(sub_region.get(), rpo_index, hashes);
+      GumNode *child =
+          build_region(sub_region.get(), rpo_index, hashes, gumnodes);
       child->parent = node;
       ordered_children.emplace_back(child, index);
     }
@@ -365,14 +370,12 @@ static GumNode *build_region(
     llvm::RegionInfo *info = region->getRegionInfo();
     for (llvm::BasicBlock *block : region->blocks()) {
       // Skip subregion entry blocks.
-      if (region->getSubRegionNode(block))
-        continue;
+      if (region->getSubRegionNode(block)) continue;
       // Skip blocks that belong to any subregion other than this one.
-      if (info->getRegionFor(block) != region)
-        continue;
+      if (info->getRegionFor(block) != region) continue;
 
       unsigned index = rpo_index.lookup(block);
-      GumNode *child = new GumNode(block, hashes);
+      GumNode *child = build_block(block, rpo_index, hashes, gumnodes);
       child->parent = node;
       ordered_children.emplace_back(child, index);
     }
@@ -397,7 +400,7 @@ static GumNode *build_region(
               }))->height;
       uint64_t h = node->label;
       for (GumNode *child : node->children)
-        h = h * 131 + child->subtree_hash;
+        h = h * 131 + child->subtree_hash; // TOREMOVE
       node->subtree_hash = h;
     }
   }
@@ -415,17 +418,21 @@ GumNode *build_tree(llvm::Function *function, llvm::RegionInfo *regions) {
   debugln("---- Compute Reverse Post-Order ----");
   llvm::ReversePostOrderTraversal<llvm::Function *> rpo_traversal(function);
 
+  // debugln(" COCKA2 TODO---- Generate Branching Assumptions ----");
+
   llvm::DenseMap<llvm::BasicBlock *, unsigned> rpo_index;
   for (auto [index, block] : llvm::enumerate(rpo_traversal))
     rpo_index[block] = index;
 
-  return build_region(regions->getTopLevelRegion(), rpo_index, inst_hashes);
+  return build_region(regions->getTopLevelRegion(), rpo_index, inst_hashes,
+                      gumnodes);
 }
 
 // ====---- GumTree Top-down ----==== //
 static void match_subtree(GumNode *src, GumNode *dst, GumMatches &matches) {
   NIFTY_ASSERT(src->subtree_hash == dst->subtree_hash,
                "Mismatched subtree hash!");
+
   // Record the match.
   matches[src] = dst;
   // Record the match in the nodes.
@@ -437,15 +444,13 @@ static void match_subtree(GumNode *src, GumNode *dst, GumMatches &matches) {
 }
 
 static GumNode *prev_sibling(GumNode *node) {
-  if (not node->parent)
-    return nullptr;
+  if (not node->parent) return nullptr;
   auto &siblings = node->parent->children;
   auto it = llvm::find(siblings, node);
-  if (it == siblings.begin())
-    return nullptr;
+  if (it == siblings.begin()) return nullptr;
   return *std::prev(it);
 }
-
+/// @brief Non-zero only if called after running bottom_up
 static double ancestor_dice(GumNode *src, GumNode *can, GumMatches &matches) {
   unsigned matched = 0, total = 0;
   GumNode *s = src->parent;
@@ -453,16 +458,13 @@ static double ancestor_dice(GumNode *src, GumNode *can, GumMatches &matches) {
 
   while (s and c) {
     auto it = matches.find(s);
-    if (it != matches.end() and it->second == c)
-      ++matched;
+    if (it != matches.end() and it->second == c) ++matched;
     ++total;
 
     s = s->parent;
     c = c->parent;
   }
-
-  if (total == 0)
-    return 0.0;
+  if (total == 0) return 0.0;
 
   return double(matched) / total;
 }
@@ -480,8 +482,7 @@ static GumNode *best_candidate(GumNode *src,
     // This is the strongest signal, same position in tree
     if (src->parent and can->parent) {
       auto it = matches.find(src->parent);
-      if (it != matches.end() and it->second == can->parent)
-        score += 2.0;
+      if (it != matches.end() and it->second == can->parent) score += 2.0;
     }
 
     // Signal 2: left sibling is already matched to src's left sibling
@@ -505,15 +506,14 @@ static GumNode *best_candidate(GumNode *src,
   }
 
   // If candidate had a positive score, return it.
-  if (best_score > 0.0)
-    return best;
+  if (best_score > 0.0) return best;
 
   // Otherwise, return NULL to try smaller subtrees.
   return nullptr;
 }
 
 static void top_down(GumNode *src, GumNode *dst, GumMatches &matches) {
-  debugln("==== Top-Down ====");
+  // debugln("==== Top-Down ====");
 
   // Max-priority queue ordered by node height
   // Each entry is a list of nodes at that height
@@ -534,7 +534,7 @@ static void top_down(GumNode *src, GumNode *dst, GumMatches &matches) {
     auto src_begin = src_queue.begin(), dst_begin = dst_queue.begin();
     unsigned src_max = src_begin->first, dst_max = dst_begin->first;
 
-    debugln("src.max = ", src_max, "    dst.max = ", dst_max);
+    // debugln("src.max = ", src_max, "    dst.max = ", dst_max);
 
     // Always process the taller side down to match heights.
     if (src_max != dst_max) {
@@ -619,8 +619,7 @@ static llvm::SmallVector<GumNode *> descendants(GumNode *node) {
 static bool is_descendant(GumNode *node, GumNode *root) {
   GumNode *cur = node->parent;
   while (cur) {
-    if (cur == root)
-      return true;
+    if (cur == root) return true;
     cur = cur->parent;
   }
   return false;
@@ -631,31 +630,25 @@ static double dice(GumNode *src, GumNode *dst, const GumMatches &matches) {
                                dst_descendants = descendants(dst);
 
   unsigned total = src_descendants.size() + dst_descendants.size();
-  if (total == 0)
-    return 0.0;
+  if (total == 0) return 0.0;
 
   unsigned common = 0;
   for (auto *desc : src_descendants) {
     auto it = matches.find(desc);
     if (it != matches.end())
-      if (is_descendant(it->second, dst))
-        ++common;
+      if (is_descendant(it->second, dst)) ++common;
   }
-
   return 2.0 * common / total;
 }
 
-static void bottom_up(GumNode *src,
-                      GumNode *dst,
-                      GumMatches &matches,
+static void bottom_up(GumNode *src, GumNode *dst, GumMatches &matches,
                       bool refine_top_down = false,
                       double dice_threshold = 0.5) {
-  debugln("==== Bottom-Up ====");
+  // debugln("==== Bottom-Up ====");
 
   for (GumNode *s : src->postorder()) {
     // Already matched.
-    if (s->match)
-      continue;
+    if (s->match) continue;
 
     bool s_is_leaf = s->children.empty();
 
@@ -775,9 +768,7 @@ void GumTree::compute_lca_map(llvm::SmallVector<GumNode *> dirty,
         lca_map[height] = llvm::DenseSet<GumNode *>();
         lca_map_count[height] = 0;
       }
-      if (!lca_map[height].contains(curr)) {
-        lca_map[height].insert(curr);
-      }
+      if (!lca_map[height].contains(curr)) lca_map[height].insert(curr);
 
       lca_map_count[height] = lca_map[height].size();
 
