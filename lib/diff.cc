@@ -48,15 +48,26 @@ static void collect_dirty_dst(llvm::SmallVector<GumNode *> &dirty,
                               GumNode *node) {
   // Found an unmatched node.
   if (not node->match) {
+    node->dirty = true;
 
     // Walk up to find the lowest matched ancestor in dst, then use its src
     // match as the dirty anchor.
     GumNode *current = node->parent;
-    while (current and not current->match)
+    while (current and not current->match) {
+      current->dirty = true;
       current = current->parent;
+    }
 
-    if (current) {
+    if (current && !current->match->dirty) {
       dirty.push_back(current->match);
+      current->match->dirty = true;
+    }
+  } else if (node->label != node->match->label) {
+    node->dirty = true;
+    // Redundant check: the  matched node must be dirty
+    if (!node->match->dirty) {
+      node->match->dirty = true;
+      dirty.push_back(node->match);
     }
   }
 
