@@ -17,11 +17,13 @@ struct ExtractOptions {
   bool regions = false;
 };
 
+
 /**
  * Extract basic blocks into their own function.
  * We assume that the blocks have a single-entry.
  * We assume the first block in the array is the single-entry.
  */
+
 llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
                         ExtractOptions options);
 
