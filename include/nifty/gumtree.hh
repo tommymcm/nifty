@@ -65,13 +65,23 @@ struct GumTree {
   /** Matched nodes */
   GumMatches matches;
 
+  /** Stable container for GumNode's */
+  std::list<GumNode> *gumnodes;
+
+  // LCA search space, mapping the height of the tree to the dirty nodes that
+  // will provide the full verification coverage
+  // COCKA2 TODO
+  llvm::MapVector<unsigned, llvm::DenseSet<GumNode *>> lca_map = {};
+  llvm::MapVector<unsigned, unsigned> lca_map_count = {};
+
   /** Construct a GumTree by diff'ing the two functions */
-  GumTree(llvm::Function *src,
-          llvm::Function *dst,
-          llvm::RegionInfo *src_regions,
-          llvm::RegionInfo *dst_regions,
-          bool refine_top_down = false,
-          double match_threshold = 0.5);
+
+  GumTree(llvm::Function *src, llvm::Function *dst,
+          llvm::RegionInfo *src_regions, llvm::RegionInfo *dst_regions,
+          bool refine_top_down = false, double match_threshold = 0.5,
+          DiffStats *diff_stats = new DiffStats(), std::list<GumNode> *gumnodes = {});
+
+  void compute_lca_map(llvm::SmallVector<GumNode *> dirty, DiffStats *diff_stats);
 };
 
 } // namespace nifty
