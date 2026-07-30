@@ -195,6 +195,7 @@ int main(int argc, char **argv) {
     DiffOptions options = { .refine_top_down = opt_diff_refine_top_down,
                             .match_threshold = opt_diff_match_threshold,
                             .dump_gumtree = opt_diff_dump_gumtree };
+
     DiffResult result = diff(function, other_function, options);
 
     // Write the functions to the output modules.
@@ -207,7 +208,7 @@ int main(int argc, char **argv) {
       return exitcode;
 
     // Print the function manifest as a CSV.
-    for (const auto &[src_func, tgt_func] : result)
+    for (const auto &[src_func, tgt_func] : result.pairs)
       println(src_func->getName(), ",", tgt_func->getName());
     println(function->getName(), ",", other_function->getName());
 
