@@ -23,14 +23,6 @@ struct DiffOptions {
   double match_threshold = 0.1;
   /** Dump GumTree */
   bool dump_gumtree = true;
-  /** Optional isomorphic matching, applied in case roots do not match or if LCA
-   * is the whole function */
-  bool isomophic_matching = false;
-
-  // TOREMOVE
-  /** Threshold for LCA */
-  double lca_threshold = 0.5;
-  // TOREMOVE
 };
 
 
