@@ -5,6 +5,7 @@
 #include "nifty/extract.hh"
 #include "nifty/gumtree.hh"
 #include "nifty/regions.hh"
+#include "nifty/constraints.hh"
 
 #include <chrono>
 #include <iostream>
@@ -173,6 +174,16 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
   // Check the function signature for differences.
   if (not same_signature(src, dst)) return result;
 
+  // Add constraints
+  ConstraintOptions constr_options;
+  if(infer_constraints(src, constr_options))
+    println("---- ASSUMPTIONS INSERTED INTO SRC FUNCTION ----");
+  else
+    println("---- ASSUMPTIONS NOT INSERTED INTO SRC FUNCTION ----");
+  if(infer_constraints(dst, constr_options))
+    println("---- ASSUMPTIONS INSERTED INTO DST FUNCTION ----");
+  else
+    println("---- ASSUMPTIONS NOT INSERTED INTO DST FUNCTION ----");
   // Fetch the region information.
   llvm::RegionInfo *src_regions = regions(src), *dst_regions = regions(dst);
 
