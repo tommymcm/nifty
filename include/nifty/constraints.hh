@@ -9,7 +9,14 @@ namespace nifty {
 struct ConstraintOptions {
   // None yet :)
 };
-
+/**
+ * Infer alignment constraints in the given function from conditional checks and insert as
+ * explicit llvm.assume calls in the branch targets.
+ *
+ * @returns true if the function was modified, false otherwise.
+ */
+bool infer_align_constraints(llvm::Function *function,
+                       ConstraintOptions options = {});
 /**
  * Infer constraints in the given function from conditional checks and insert as
  * explicit llvm.assume calls in the branch targets.
