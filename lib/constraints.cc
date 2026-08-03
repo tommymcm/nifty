@@ -19,13 +19,65 @@ struct Constraint {
   bool inverted = false;
 
   Constraint(llvm::Value *condition, bool inverted = false)
-    : condition{ condition },
-      inverted{ inverted } {}
+      : condition{condition}, inverted{inverted} {}
 };
+
+// struct AlignConstraint : Constraint {
+//   llvm::DataLayout data_layout;
+//   uint64_t align;
+
+//   AlignConstraint(llvm::Value *ptr, llvm::DataLayout data_layout, uint64_t
+//   align) : Constraint(nullptr){
+//     this->data_layout = data_layout;
+//     this->align = align;
+//   }
+// };
 
 void insert_uses(std::set<llvm::Use *> &uses, llvm::Value *value) {
   for (llvm::Use &use : value->uses())
     uses.insert(&use);
+}
+
+// Infer align constraints
+bool infer_align_constraints(llvm::Function *function,
+                             ConstraintOptions options) {
+  bool modified = false;
+
+  // Ensure we have a valid function.
+  NIFTY_ASSERT(function, "Given NULL function");
+
+  // Skip empty functions.
+  if (function->empty()) return false;
+
+  llvm::IRBuilder<> builder(function->getContext());
+
+  for (llvm::BasicBlock &block : *function) {
+    for (llvm::Instruction &instr : block) {
+      llvm::AllocaInst *alloca = dyn_cast<llvm::AllocaInst>(&instr);
+      if (!alloca) continue;
+
+      uint64_t align = alloca->getAlign().value();
+
+      // Find all the uses of the alloca ptr
+      for (llvm::Use &use : alloca->uses()) {
+        // Only handle non-PHI instruction users.
+        auto *user = dyn_cast<llvm::Instruction>(use.getUser());
+        if (not user or isa<llvm::PHINode>(user)) continue;
+
+        // Fetch the parent block.
+        llvm::BasicBlock *user_block = user->getParent();
+
+        // Do not insert constraints into the same block
+        if (user_block == &block) continue;
+
+        builder.SetInsertPoint(user);
+        builder.CreateAlignmentAssumption(function->getDataLayout(), alloca,
+                                          align);
+        modified = true;
+      }
+    }
+  }
+  return modified;
 }
 
 bool infer_constraints(llvm::Function *function, ConstraintOptions options) {
@@ -35,8 +87,7 @@ bool infer_constraints(llvm::Function *function, ConstraintOptions options) {
   NIFTY_ASSERT(function, "Given NULL function");
 
   // Skip empty functions.
-  if (function->empty())
-    return false;
+  if (function->empty()) return false;
 
   // Construct the dominator tree.
   llvm::DominatorTree domtree(*function);
@@ -44,13 +95,14 @@ bool infer_constraints(llvm::Function *function, ConstraintOptions options) {
   // Identify blocks that can have constraints inserted.
   llvm::DenseMap<llvm::BasicBlock *, std::set<std::pair<llvm::Value *, bool>>>
       to_assume;
+  // Conditional constraints
   for (llvm::BasicBlock &block : *function) {
+
     llvm::Instruction *terminator = block.getTerminator();
 
     // Handle conditional branches.
     auto *branch = dyn_cast<llvm::CondBrInst>(terminator);
-    if (not branch)
-      continue;
+    if (not branch) continue;
     llvm::BasicBlock *then_block = branch->getSuccessor(0),
                      *else_block = branch->getSuccessor(1);
 
@@ -75,8 +127,7 @@ bool infer_constraints(llvm::Function *function, ConstraintOptions options) {
 
       // Only handle non-PHI instruction users.
       auto *user = dyn_cast<llvm::Instruction>(use->getUser());
-      if (not user or isa<llvm::PHINode>(user))
-        continue;
+      if (not user or isa<llvm::PHINode>(user)) continue;
 
       // Fetch the parent block.
       llvm::BasicBlock *user_block = user->getParent();
@@ -106,8 +157,8 @@ bool infer_constraints(llvm::Function *function, ConstraintOptions options) {
       // context, then clone it here.
       auto *cond_inst = dyn_cast<llvm::Instruction>(condition);
       if (cond_inst //
-          and not cond_inst->mayHaveSideEffects()
-          and not cond_inst->mayReadFromMemory()) {
+          and not cond_inst->mayHaveSideEffects() and
+          not cond_inst->mayReadFromMemory()) {
 
         llvm::Instruction *condition_clone = cond_inst->clone();
         builder.Insert(condition_clone);
@@ -133,6 +184,8 @@ bool infer_constraints(llvm::Function *function, ConstraintOptions options) {
     // Reset the builder.
     builder.ClearInsertionPoint();
   }
+  // Infer alignment constraints
+  modified |= infer_align_constraints(function, options);
 
   return modified;
 }
@@ -140,9 +193,8 @@ bool infer_constraints(llvm::Function *function, ConstraintOptions options) {
 bool infer_constraints(llvm::Module &module, ConstraintOptions options) {
   bool modified = false;
 
-  for (llvm::Function &function : module) {
+  for (llvm::Function &function : module)
     modified |= infer_constraints(&function, options);
-  }
 
   return modified;
 }
