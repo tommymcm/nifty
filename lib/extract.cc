@@ -4,6 +4,7 @@
 #include "nifty/print.hh"
 #include "nifty/regions.hh"
 
+#include <llvm/ADT/PostOrderIterator.h>
 #include <llvm/ADT/SetVector.h>
 #include <llvm/IR/CFG.h>
 #include <llvm/IR/Dominators.h>
@@ -100,8 +101,7 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
         bool terminator = user_inst == user_block->getTerminator();
 
         // If the user is NOT a terminator, skip it.
-        if (not terminator)
-          continue;
+        if (not terminator) continue;
 
         // If the terminator has a target outside the blockset, mark value as
         // live-out.
@@ -279,57 +279,165 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   // Jump into the first block in the array, assumed to be the single-entry.
   builder.CreateBr(first_block);
 
-  // For each non-local branch target, create an exit block.
-  debugln("==== CREATE EXIT BLOCKS ====");
+
+  // Create the exit block which stores pseudoglobal values as well as the
+  // exiting branch. COCKA2 TODO modify exit_edges to only have an edge towards
+  // the exit block.
+  auto *cocka2_exit_block =
+      llvm::BasicBlock::Create(context, "cocka2_exit",out_function);
+  
+  builder.SetInsertPoint(cocka2_exit_block);
+  llvm::Type *ret_type = out_function->getReturnType();
+  if (ret_type->isVoidTy()) builder.CreateRetVoid();
+  else
+    builder.CreateRet(llvm::Constant::getNullValue(ret_type));
+
+  // Nonlocal blocks which are exit targets.
   llvm::DenseMap<llvm::BasicBlockEdge, llvm::BasicBlock *> exit_blocks;
-  for (const llvm::BasicBlockEdge &edge : exit_edges) {
-    const llvm::BasicBlock *start_block = edge.getStart();
-    const llvm::BasicBlock *end_block = edge.getEnd();
 
-    auto *exit_block = llvm::BasicBlock::Create(
-        context,
-        "exit." + start_block->getName() + "." + end_block->getName(),
-        out_function);
-
-    auto [_it, fresh] = exit_blocks.try_emplace(edge, exit_block);
+  
+  // debugln("==== ADD EXIT BLOCK BRANCHES ====");
+  for(llvm::BasicBlockEdge &edge : exit_edges){
+    auto [_it, fresh] = exit_blocks.try_emplace(edge, cocka2_exit_block);
     NIFTY_ASSERT(fresh, "Cloned the same exit edge twice, something is off");
-
-    // Insert a default return value.
-    // NOTE: Alternatively, we could call exit() with an unreachable.
-    builder.SetInsertPoint(exit_block);
-
-    llvm::Type *ret_type = out_function->getReturnType();
-    if (ret_type->isVoidTy()) {
-      builder.CreateRetVoid();
-    } else {
-      builder.CreateRet(llvm::Constant::getNullValue(ret_type));
-    }
   }
+  
+  
 
   // Clone over all of the other blocks.
   debugln("==== CLONE BLOCKS ====");
   for (llvm::BasicBlock *orig_block : blocks) {
     // Clone the basic block.
     llvm::BasicBlock *clone_block =
-        llvm::CloneBasicBlock(orig_block,
-                              vmap,
+        llvm::CloneBasicBlock(orig_block, vmap,
                               /* suffix */ "",
                               /* function */ out_function);
 
     vmap[orig_block] = clone_block;
 
-    // Patch up any of the exiting edges.
+  }
+
+  llvm::PHINode *exit_phi = NULL;
+  // Non-local exits get a reverse post-order value
+
+  if (exit_edges.size()) {
+    llvm::DenseSet<llvm::BasicBlock *> seen_start_blocks;
+    builder.SetInsertPoint(cocka2_exit_block->getTerminator());
+    llvm::ReversePostOrderTraversal<llvm::Function *> rpo(function);
+    exit_phi = builder.CreatePHI(llvm::Type::getInt64Ty(context), exit_edges.size());
+
+    for (const llvm::BasicBlockEdge &edge : exit_edges) {
+      llvm::BasicBlock *start_block =
+          const_cast<llvm::BasicBlock *>(edge.getStart());
+      llvm::BasicBlock *end_block =
+          const_cast<llvm::BasicBlock *>(edge.getEnd());
+      
+      // Even if there are two non-local exits, the "cocka2_exit_value" must be defined only once
+      if(seen_start_blocks.contains(start_block)) continue;
+      seen_start_blocks.insert(start_block);
+
+      llvm::BasicBlock *cloned_start = dyn_cast<llvm::BasicBlock>(vmap[start_block]);
+      llvm::Value *cocka2_exit_value;
+
+      llvm::Instruction *cloned_term = cloned_start->getTerminator();
+      builder.SetInsertPoint(cloned_term);
+
+      llvm::CondBrInst *cond_br = dyn_cast<llvm::CondBrInst>(cloned_term);
+      llvm::UncondBrInst *uncond_br = dyn_cast<llvm::UncondBrInst>(cloned_term);
+
+      NIFTY_ASSERT(
+          cond_br || uncond_br,
+          "Non-local exit targets must arise from branch instructions!");
+      // Unconditional branch -> just the block's reverse post order
+      if (uncond_br) {
+        // Get the non-local target block
+
+        llvm::BasicBlock *non_local = uncond_br->getSuccessor();
+
+        llvm::Constant *zero =
+            llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), 0);
+        llvm::Constant *order = NULL;
+
+        unsigned i = 0;
+        for (llvm::BasicBlock *block : rpo) {
+          if (block == non_local) {
+            order = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), i);
+            break;
+          }
+
+          i++;
+        }
+
+        NIFTY_ASSERT(order, "Non-local exit block " +
+                                non_local->getNameOrAsOperand() +
+                                " not found in the function");
+
+        cocka2_exit_value = builder.CreateAdd(
+            zero, order,
+            "cocka2_exit_value_" + cloned_start->getNameOrAsOperand());
+
+      }
+      // Conditional branch -> exit_value based on select of the condition
+      else {
+        llvm::BasicBlock *non_local1 = cond_br->getSuccessor(0);
+        llvm::BasicBlock *non_local2 = cond_br->getSuccessor(1);
+        llvm::Value *br_cond = cond_br->getCondition();
+        llvm::Constant *order1 = NULL, *order2 = NULL;
+
+        unsigned i = 0;
+        for (llvm::BasicBlock *block : rpo) {
+          if (block == non_local1)
+            order1 = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), i);
+          if (block == non_local2)
+            order2 = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), i);
+
+          if (order1 && order2) break;
+          i++;
+        }
+
+        NIFTY_ASSERT(order1 && order2, "At least one of the non-local exit "
+                                       "blocks out of : " +
+                                           non_local1->getNameOrAsOperand() +
+                                           " and " +
+                                           non_local2->getNameOrAsOperand() +
+                                           " not found in the function!");
+        cocka2_exit_value = builder.CreateSelect(
+            br_cond, order1, order2,
+            "cocka2_exit_value_" + cloned_start->getNameOrAsOperand());
+      }
+      // Add the branch value in the phi node.
+      exit_phi->addIncoming(cocka2_exit_value, cloned_start);
+      // phi_blocks.try_emplace(cocka2_exit_value, start_block);
+    }
+
+    // Consume the value of non-local exit block.
+    builder.SetInsertPoint(cocka2_exit_block->getTerminator());
+      llvm::FunctionType *func = llvm::FunctionType::get(
+          llvm::Type::getVoidTy(context), llvm::Type::getInt64Ty(context), false);
+      // Getting the string of the type
+      std::string ty = "store_exit";
+      llvm::FunctionCallee func_callee =
+          out_module->getOrInsertFunction(ty, func);
+      llvm::CallInst *store_call =
+          builder.CreateCall(func_callee, {exit_phi});
+    
+  }
+
+for(llvm::BasicBlock *orig_block : blocks){
+  llvm::BasicBlock *clone_block = dyn_cast<llvm::BasicBlock>(vmap[orig_block]);
+  // Patch up any of the exiting edges.
     llvm::Instruction *terminator = clone_block->getTerminator();
     for (llvm::BasicBlock *succ_block : llvm::successors(orig_block)) {
       llvm::BasicBlockEdge edge(orig_block, succ_block);
       llvm::BasicBlock *exit_block = exit_blocks.lookup(edge);
-      if (not exit_block)
-        continue;
+      if (not exit_block) continue;
 
       terminator->replaceSuccessorWith(succ_block, exit_block);
     }
+  
   }
 
+  
   // Map old arguments to new arguments.
   for (const auto &[old_arg, new_arg] :
        llvm::zip(function->args(), out_function->args()))
