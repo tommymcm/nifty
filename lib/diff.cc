@@ -1,11 +1,11 @@
 #include <llvm/Analysis/RegionInfo.h>
 
 #include "nifty/assert.hh"
+#include "nifty/constraints.hh"
 #include "nifty/diff.hh"
 #include "nifty/extract.hh"
 #include "nifty/gumtree.hh"
 #include "nifty/regions.hh"
-#include "nifty/constraints.hh"
 
 #include <chrono>
 #include <iostream>
@@ -176,11 +176,11 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
 
   // Add constraints
   ConstraintOptions constr_options;
-  if(infer_constraints(src, constr_options))
+  if (infer_constraints(src, constr_options))
     println("---- ASSUMPTIONS INSERTED INTO SRC FUNCTION ----");
   else
     println("---- ASSUMPTIONS NOT INSERTED INTO SRC FUNCTION ----");
-  if(infer_constraints(dst, constr_options))
+  if (infer_constraints(dst, constr_options))
     println("---- ASSUMPTIONS INSERTED INTO DST FUNCTION ----");
   else
     println("---- ASSUMPTIONS NOT INSERTED INTO DST FUNCTION ----");
@@ -282,8 +282,21 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
     if (current && current != tree.src &&
         !(current->parent == tree.src && tree.src->children.size() == 1)) {
       println("---- LCA IS NOT THE WHOLE FUNCTION ----");
-      if (!lca->region && !lca->instr)
-        println("---- LCA BLOCK NAME IS ", lca->block->getNameOrAsOperand());
+      print("---- LCA IS A");
+      if (lca->is_region) {
+        print(" REGION ");
+        print(lca->region->getNameStr());
+      }
+      if (lca->is_block) {
+        print(" BLOCK ");
+        print(lca->block->getNameOrAsOperand());
+      }
+      if (lca->is_instr) {
+        print("N INSTRUCTION ");
+        print(lca->instr->getNameOrAsOperand());
+      }
+      print(" ----\n");
+
     } else {
       println("---- LCA IS THE WHOLE FUNCTION ----");
     }
