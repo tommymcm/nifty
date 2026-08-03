@@ -22,17 +22,6 @@ struct Constraint {
       : condition{condition}, inverted{inverted} {}
 };
 
-// struct AlignConstraint : Constraint {
-//   llvm::DataLayout data_layout;
-//   uint64_t align;
-
-//   AlignConstraint(llvm::Value *ptr, llvm::DataLayout data_layout, uint64_t
-//   align) : Constraint(nullptr){
-//     this->data_layout = data_layout;
-//     this->align = align;
-//   }
-// };
-
 void insert_uses(std::set<llvm::Use *> &uses, llvm::Value *value) {
   for (llvm::Use &use : value->uses())
     uses.insert(&use);
