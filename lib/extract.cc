@@ -13,6 +13,7 @@
 #include <llvm/IR/Module.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 
+#include <iostream>
 namespace nifty {
 
 llvm::BasicBlock *parent(llvm::Value *value) {
@@ -24,6 +25,7 @@ llvm::BasicBlock *parent(llvm::Value *value) {
 
 llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
                         ExtractOptions options) {
+
   // If no blocks were provided, return NULL.
   if (blocks.empty())
     return nullptr;
@@ -89,8 +91,10 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
         llvm::BasicBlock *user_block = user_inst->getParent();
 
         // If the user is non-local, mark value as live-out.
-        if (not blockset.contains(user_block))
+        if (not blockset.contains(user_block)) {
           live_out.push_back(&inst);
+          break;
+        }
 
         // Is the user a terminator?
         bool terminator = user_inst == user_block->getTerminator();
@@ -101,7 +105,7 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
 
         // If the terminator has a target outside the blockset, mark value as
         // live-out.
-        // NOTE: This is necessary to handle non-local control dependences.
+        // NOTE: This is necessary to handle non-local control dependencies.
         bool local_jump = true;
         for (llvm::BasicBlock *succ_block : llvm::successors(user_block)) {
           // Check if the jump is local.
@@ -114,6 +118,7 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
 
         // Otherwise, this is a live-out value.
         live_out.push_back(&inst);
+        break;
       }
     }
   }
@@ -125,7 +130,6 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
       // Skip local edges.
       if (blockset.contains(succ))
         continue;
-
       // Register the non-local edge.
       exit_edges.emplace_back(block, succ);
     }
@@ -248,16 +252,28 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
     if (not global)
       continue;
 
-    { debugln("  VAR ", *global); }
+    debugln("  VAR ", *global);
 
-    auto *load_value = builder.CreateLoad(orig_value->getType(),
-                                          global,
-                                          orig_value->getName());
+    debugln("  VAR ", *global);
 
-    { debugln("  VAL ", *load_value); }
+    // Declare a function that emits the given type
+    llvm::FunctionType *func =
+        llvm::FunctionType::get(orig_value->getType(), {}, false);
+
+    // Getting the string of the type
+    std::string ty;
+    llvm::raw_string_ostream ty_stream(ty);
+    orig_value->getType()->print(ty_stream);
+    ty = "load_" + ty;
+    llvm::FunctionCallee func_callee =
+        out_module->getOrInsertFunction(ty, func);
+    llvm::CallInst *load_call =
+        builder.CreateCall(func_callee, {}, orig_value->getName());
+
+    debugln("  VAL ", *load_call);
 
     // Map the original value to the load.
-    vmap[orig_value] = load_value;
+    vmap[orig_value] = load_call;
   }
 
   // Jump into the first block in the array, assumed to be the single-entry.
@@ -316,9 +332,8 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
 
   // Map old arguments to new arguments.
   for (const auto &[old_arg, new_arg] :
-       llvm::zip(function->args(), out_function->args())) {
+       llvm::zip(function->args(), out_function->args()))
     vmap[&old_arg] = &new_arg;
-  }
 
   // Remap values.
   debugln("==== REMAP VALUES ====");
@@ -355,7 +370,22 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
       // Store the cloned value to its global.
       llvm::GlobalVariable *global = globals.lookup(orig_value);
       NIFTY_ASSERT(global, "Could not find global for ", *orig_value);
-      builder.CreateStore(clone_value, global);
+      // builder.CreateStore(clone_value, global);
+
+      // Declare a function that uses the given type
+      llvm::FunctionType *func =
+          llvm::FunctionType::get(llvm::Type::getVoidTy(context),
+                                  { orig_value->getType() },
+                                  false);
+      // Getting the string of the type
+      std::string ty;
+      llvm::raw_string_ostream ty_stream(ty);
+      orig_value->getType()->print(ty_stream);
+      ty = "store_" + ty;
+      llvm::FunctionCallee func_callee =
+          out_module->getOrInsertFunction(ty, func);
+      llvm::CallInst *store_call =
+          builder.CreateCall(func_callee, { clone_value });
     }
   }
 
