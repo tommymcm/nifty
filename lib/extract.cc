@@ -129,7 +129,6 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   }
 
   // Dump analysis information.
-  /*
   {
     debugln("==== LIVE IN  ====");
     for (llvm::Value *value : live_in) {
@@ -149,7 +148,6 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
     }
     debugln();
   }
-    */
 
   // Determine the output module.
   llvm::Module *out_module = options.out_module;
@@ -191,7 +189,7 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
           /* constant? */ false,
           llvm::GlobalVariable::LinkageTypes::ExternalLinkage,
           /* initializer */ nullptr);
-      /*
+      
 
 
       {
@@ -199,7 +197,7 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
         debugln("  ", *global);
         debugln("  FOR ", value_name(*value));
       }
-        */
+        
 
       // Map the original value to the new global.
       auto [_it, _fresh] = globals.try_emplace(value, global);
@@ -233,17 +231,17 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   // Populate the entry block with global variable loads.
   for (llvm::Value *orig_value : live_in) {
     {
-      // debugln("LOAD GLOBAL");
-      // debugln("  FOR ", *orig_value);
+      debugln("LOAD GLOBAL");
+      debugln("  FOR ", *orig_value);
     }
 
     // Load the value from its global.
     llvm::GlobalVariable *global = globals.lookup(orig_value);
     if (not global) continue;
 
-    //{ debugln("  VAR ", *global); }
+    debugln("  VAR ", *global);
 
-    { debugln("  VAR ", *global); }
+    debugln("  VAR ", *global);
 
     // Declare a function that emits the given type
     llvm::FunctionType *func =
@@ -259,7 +257,7 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
     llvm::CallInst *load_call =
         builder.CreateCall(func_callee, {}, orig_value->getName());
 
-    // { debugln("  VAL ", *load_value); }
+    debugln("  VAL ", *load_call);
 
     // Map the original value to the load.
     vmap[orig_value] = load_call;
@@ -269,7 +267,7 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   builder.CreateBr(first_block);
 
   // For each non-local branch target, create an exit block.
-  // debugln("==== CREATE EXIT BLOCKS ====");
+  debugln("==== CREATE EXIT BLOCKS ====");
   llvm::DenseMap<llvm::BasicBlockEdge, llvm::BasicBlock *> exit_blocks;
   for (const llvm::BasicBlockEdge &edge : exit_edges) {
     const llvm::BasicBlock *start_block = edge.getStart();
@@ -296,7 +294,7 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   }
 
   // Clone over all of the other blocks.
-  // debugln("==== CLONE BLOCKS ====");
+  debugln("==== CLONE BLOCKS ====");
   for (llvm::BasicBlock *orig_block : blocks) {
     // Clone the basic block.
     llvm::BasicBlock *clone_block =
@@ -325,12 +323,12 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
     vmap[&old_arg] = &new_arg;
 
   // Remap values.
-  // debugln("==== REMAP VALUES ====");
+  debugln("==== REMAP VALUES ====");
   llvm::ValueMapper mapper(vmap, llvm::RF_IgnoreMissingLocals);
   mapper.remapFunction(*out_function);
 
   // Store live-out values to global variable before function exit.
-  // debugln("==== STORE LIVE-OUTS ====");
+  debugln("==== STORE LIVE-OUTS ====");
   llvm::DominatorTree dom_tree(*out_function);
   for (llvm::BasicBlock &block : *out_function) {
     // Fetch the terminator.
