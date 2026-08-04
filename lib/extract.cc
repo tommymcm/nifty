@@ -191,17 +191,6 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
           /* constant? */ false,
           llvm::GlobalVariable::LinkageTypes::ExternalLinkage,
           /* initializer */ nullptr);
-
-      // Declare a function that emits the given type
-      llvm::FunctionType *func =
-          llvm::FunctionType::get(value->getType(), {}, false);
-
-      // Getting the string of the type
-      std::string ty;
-      llvm::raw_string_ostream ty_stream(ty);
-      value->getType()->print(ty_stream);
-      ty = "get_" + ty;
-      out_module->getOrInsertFunction(ty, func);
       /*
 
 
