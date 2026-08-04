@@ -18,7 +18,8 @@ namespace nifty {
 
 llvm::BasicBlock *parent(llvm::Value *value) {
   auto *inst = dyn_cast<llvm::Instruction>(value);
-  if (not inst) return nullptr;
+  if (not inst)
+    return nullptr;
   return inst->getParent();
 }
 
@@ -26,7 +27,8 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
                         ExtractOptions options) {
 
   // If no blocks were provided, return NULL.
-  if (blocks.empty()) return nullptr;
+  if (blocks.empty())
+    return nullptr;
 
   // Fetch the parent context.
   llvm::BasicBlock *first_block = blocks.front();
@@ -62,12 +64,14 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
           continue;
 
         // Skip operands we've already seen.
-        if (seen.contains(operand)) continue;
+        if (seen.contains(operand))
+          continue;
         seen.insert(operand);
 
         // If the value is defined in the set of blocks, skip it.
         llvm::BasicBlock *op_block = parent(operand);
-        if (blockset.contains(op_block)) continue;
+        if (blockset.contains(op_block))
+          continue;
 
         // Otherwise, this is a live-in value.
         live_in.push_back(operand);
@@ -80,7 +84,8 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
         auto *user_inst = dyn_cast<llvm::Instruction>(use.getUser());
 
         // Ignore non-instruction users.
-        if (not user_inst) continue;
+        if (not user_inst)
+          continue;
 
         // Fetch the user block.
         llvm::BasicBlock *user_block = user_inst->getParent();
@@ -108,7 +113,8 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
         }
 
         // If the jump is local, skip the use.
-        if (local_jump) continue;
+        if (local_jump)
+          continue;
 
         // Otherwise, this is a live-out value.
         live_out.push_back(&inst);
@@ -122,7 +128,8 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   for (llvm::BasicBlock *block : blocks) {
     for (llvm::BasicBlock *succ : llvm::successors(block)) {
       // Skip local edges.
-      if (blockset.contains(succ)) continue;
+      if (blockset.contains(succ))
+        continue;
       // Register the non-local edge.
       exit_edges.emplace_back(block, succ);
     }
@@ -151,7 +158,8 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
 
   // Determine the output module.
   llvm::Module *out_module = options.out_module;
-  if (not out_module) out_module = module;
+  if (not out_module)
+    out_module = module;
 
   // Ensure that the LLVMContext of the input and output modules match.
   NIFTY_ASSERT(&context == &out_module->getContext(),
@@ -159,45 +167,48 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
 
   // Create globals for the input and output values.
   llvm::DenseMap<llvm::Value *, llvm::GlobalVariable *> globals;
-  for (auto &values : {live_in, live_out}) {
+  for (auto &values : { live_in, live_out }) {
     for (llvm::Value *value : values) {
       // Fetch the type, and skip invalid types.
       auto *type = value->getType();
-      if (not type) continue;
+      if (not type)
+        continue;
 
       // Skip metadata.
-      if (type->isMetadataTy()) continue;
+      if (type->isMetadataTy())
+        continue;
 
       // Skip arguments.
-      if (isa<llvm::Argument>(value)) continue;
+      if (isa<llvm::Argument>(value))
+        continue;
 
       // Clone global values.
       if (isa<llvm::GlobalValue>(value)) {
         // If we are emitting to the same module, there's no need to clone.
-        if (out_module == module) continue;
+        if (out_module == module)
+          continue;
 
         // TODO: Implement global value cloning.
         NIFTY_UNREACHABLE("NYI: global value cloning ");
       }
 
       // If we've already created a global for this value, skip it.
-      if (globals.contains(value)) continue;
+      if (globals.contains(value))
+        continue;
 
       // Create the global variable.
       auto *global = new llvm::GlobalVariable(
-          *out_module, value->getType(),
+          *out_module,
+          value->getType(),
           /* constant? */ false,
           llvm::GlobalVariable::LinkageTypes::ExternalLinkage,
           /* initializer */ nullptr);
-      
-
 
       {
         debugln("CREATE GLOBAL");
         debugln("  ", *global);
         debugln("  FOR ", value_name(*value));
       }
-        
 
       // Map the original value to the new global.
       auto [_it, _fresh] = globals.try_emplace(value, global);
@@ -220,7 +231,8 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
   // Map all non-local incoming block to the entry block.
   for (llvm::BasicBlock *pred : llvm::predecessors(first_block)) {
     // Skip local blocks.
-    if (blockset.contains(pred)) continue;
+    if (blockset.contains(pred))
+      continue;
 
     vmap[pred] = entry_block;
   }
@@ -237,7 +249,8 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
 
     // Load the value from its global.
     llvm::GlobalVariable *global = globals.lookup(orig_value);
-    if (not global) continue;
+    if (not global)
+      continue;
 
     debugln("  VAR ", *global);
 
@@ -336,10 +349,11 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
     NIFTY_ASSERT(terminator, "Block has no terminator ", block);
 
     // Skip terminators that don't exit the function.
-    bool is_exit = isa<llvm::ReturnInst>(terminator) or
-                   isa<llvm::ResumeInst>(terminator) or
-                   isa<llvm::UnreachableInst>(terminator);
-    if (not is_exit) continue;
+    bool is_exit = isa<llvm::ReturnInst>(terminator)
+                   or isa<llvm::ResumeInst>(terminator)
+                   or isa<llvm::UnreachableInst>(terminator);
+    if (not is_exit)
+      continue;
 
     // Store all live-outs that dominate this location.
     builder.SetInsertPoint(terminator);
@@ -350,7 +364,8 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
       NIFTY_ASSERT(clone_inst, "live-out was not cloned ", *orig_value);
 
       // Skip live-out values that don't dominate this exit.
-      if (not dom_tree.dominates(clone_inst, terminator)) continue;
+      if (not dom_tree.dominates(clone_inst, terminator))
+        continue;
 
       // Store the cloned value to its global.
       llvm::GlobalVariable *global = globals.lookup(orig_value);
@@ -358,8 +373,10 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
       // builder.CreateStore(clone_value, global);
 
       // Declare a function that uses the given type
-      llvm::FunctionType *func = llvm::FunctionType::get(
-          llvm::Type::getVoidTy(context), {orig_value->getType()}, false);
+      llvm::FunctionType *func =
+          llvm::FunctionType::get(llvm::Type::getVoidTy(context),
+                                  { orig_value->getType() },
+                                  false);
       // Getting the string of the type
       std::string ty;
       llvm::raw_string_ostream ty_stream(ty);
@@ -368,7 +385,7 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
       llvm::FunctionCallee func_callee =
           out_module->getOrInsertFunction(ty, func);
       llvm::CallInst *store_call =
-          builder.CreateCall(func_callee, {clone_value});
+          builder.CreateCall(func_callee, { clone_value });
     }
   }
 
@@ -389,7 +406,8 @@ llvm::Function *extract(llvm::Region *region, ExtractOptions options) {
   // Append all other blocks.
   for (llvm::BasicBlock *block : region->blocks()) {
     // Skip the entry block, since it's already been added.
-    if (block == entry_block) continue;
+    if (block == entry_block)
+      continue;
 
     blocks.push_back(block);
   }
@@ -402,7 +420,8 @@ llvm::Function *extract(llvm::Region *region, ExtractOptions options) {
 }
 
 static void walk_region_tree(const ExtractOptions &options,
-                             llvm::Region *region, unsigned depth = 0) {
+                             llvm::Region *region,
+                             unsigned depth = 0) {
   // Extract this region.
   extract(region, options);
 
