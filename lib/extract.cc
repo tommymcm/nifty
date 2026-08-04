@@ -99,9 +99,12 @@ llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
 
         // Is the user a terminator?
         bool terminator = user_inst == user_block->getTerminator();
+      
+        // Is the user a branching condition?
+        bool cond_br = (dyn_cast<llvm::CondBrInst>(user_inst))? true : false;
 
         // If the user is NOT a terminator, skip it.
-        if (not terminator) continue;
+        if (not terminator || cond_br) continue;
 
         // If the terminator has a target outside the blockset, mark value as
         // live-out.
