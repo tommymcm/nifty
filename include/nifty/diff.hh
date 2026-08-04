@@ -22,7 +22,9 @@ struct DiffOptions {
   /** Threshold for region matching. 0.0 (always match) - 1.0 (only exact) */
   double match_threshold = 0.1;
   /** Dump GumTree */
-  bool dump_gumtree = true;
+  bool dump_gumtree = false;
+  /** Track GumTree stats */
+  bool gumtree_stats = false;
 };
 
 

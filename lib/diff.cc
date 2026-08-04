@@ -140,21 +140,26 @@ static void dirty_subtree_sizes(GumNode *src_root,
 }
 static llvm::Function *extract_node(GumNode *node,
                                     const ExtractOptions &options) {
-  if (llvm::Region *region = node->region) return extract(region, options);
-  if (!node->is_block) std::cerr << "Passed node is not a block\n";
+  if (llvm::Region *region = node->region)
+    return extract(region, options);
+  if (!node->is_block)
+    std::cerr << "Passed node is not a block\n";
 
-  return extract({node->block}, options);
+  return extract({ node->block }, options);
 }
 
 static bool same_signature(llvm::Function *src, llvm::Function *dst) {
   // Check that they have the same function type.
-  if (src->getType() != dst->getType()) return false;
+  if (src->getType() != dst->getType())
+    return false;
 
   // Check that they have the same calling convention.
-  if (src->getCallingConv() != dst->getCallingConv()) return false;
+  if (src->getCallingConv() != dst->getCallingConv())
+    return false;
 
   // Check that they have the same attributes.
-  if (src->getAttributes() != dst->getAttributes()) return false;
+  if (src->getAttributes() != dst->getAttributes())
+    return false;
 
   return true;
 }
@@ -172,7 +177,8 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
   double duration = 0.0;
 
   // Check the function signature for differences.
-  if (not same_signature(src, dst)) return result;
+  if (not same_signature(src, dst))
+    return result;
 
   // Add constraints
   ConstraintOptions constr_options;
@@ -189,8 +195,14 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
 
   // Construct the gumtree.
 
-  GumTree tree(src, dst, src_regions, dst_regions, options.refine_top_down,
-               options.match_threshold, diff_stats, &gumnodes);
+  GumTree tree(src,
+               dst,
+               src_regions,
+               dst_regions,
+               options.refine_top_down,
+               options.match_threshold,
+               diff_stats,
+               &gumnodes);
 
   // If either of the roots are unmatched, do nothing.
   // We need to validate the whole function!
@@ -200,12 +212,14 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
   }
 
   // Collect all dirty nodes.
-
-  start = high_resolution_clock::now();
+  if (options.gumtree_stats)
+    start = high_resolution_clock::now();
   llvm::SmallVector<GumNode *> dirty = collect_dirty(tree.src, tree.dst);
-  end = high_resolution_clock::now();
-  duration = duration_cast<microseconds>(end - start).count() / 1000000.0;
-  diff_stats->dirty_duration = duration;
+  if (options.gumtree_stats) {
+    end = high_resolution_clock::now();
+    duration = duration_cast<microseconds>(end - start).count() / 1000000.0;
+    diff_stats->dirty_duration = duration;
+  }
 
   // Output the GumTree, if requested.
   if (options.dump_gumtree) {
@@ -235,14 +249,18 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
   }
 
   // Find the lowest common (matched) ancestor of all dirty nodes.
-  start = high_resolution_clock::now();
+  if (options.gumtree_stats)
+    start = high_resolution_clock::now();
   GumNode *lca = find_lca(tree.src, dirty);
-  end = high_resolution_clock::now();
 
-  duration = duration_cast<microseconds>(end - start).count() / 1000000.0;
-  diff_stats->find_lca_duration = duration;
+  if (options.gumtree_stats) {
+    end = high_resolution_clock::now();
 
-  tree.compute_lca_map(dirty, diff_stats);
+    duration = duration_cast<microseconds>(end - start).count() / 1000000.0;
+    diff_stats->find_lca_duration = duration;
+
+    tree.compute_lca_map(dirty, diff_stats);
+  }
   // Computing subtree/dirty subtree sizes for threshold computations
 
   llvm::DenseMap<GumNode *, unsigned> size;
@@ -251,7 +269,7 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
   subtree_sizes(tree.src, &size);
   dirty_subtree_sizes(tree.src, &dirty_size, dirty);
 
-  {
+  if (options.gumtree_stats) {
     diff_stats->lca_computed = true;
     diff_stats->lca_dirty = lca->dirty;
     diff_stats->lca_height = lca->height;
@@ -279,8 +297,8 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
   // debugln("Dirty subtree size: ", dirty_size[lca]);
 
   {
-    if (current && current != tree.src &&
-        !(current->parent == tree.src && tree.src->children.size() == 1)) {
+    if (current && current != tree.src
+        && !(current->parent == tree.src && tree.src->children.size() == 1)) {
       println("---- LCA IS NOT THE WHOLE FUNCTION ----");
       print("---- LCA IS A");
       if (lca->is_region) {
@@ -308,21 +326,30 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
     NIFTY_ASSERT(match, "No match for LCA!");
 
     // Extract the regions.
-    ExtractOptions options;
+    ExtractOptions extr_options;
 
     double duration_src, duration_tgt;
-    start = clock_now();
-    llvm::Function *src_func = extract_node(current, options);
-    end = clock_now();
-    duration_src = compute_duration();
-    diff_stats->extract_node_src_duration.push_back(duration_src);
+    if (options.gumtree_stats)
+      start = clock_now();
 
-    start = clock_now();
-    llvm::Function *dst_func = extract_node(match, options);
-    end = clock_now();
-    duration_tgt = compute_duration();
-    diff_stats->extract_node_tgt_duration.push_back(duration_tgt);
-    diff_stats->extract_node_duration.push_back(duration_src + duration_tgt);
+    llvm::Function *src_func = extract_node(current, extr_options);
+
+    if (options.gumtree_stats) {
+      end = clock_now();
+      duration_src = compute_duration();
+      diff_stats->extract_node_src_duration.push_back(duration_src);
+
+      start = clock_now();
+    }
+
+    llvm::Function *dst_func = extract_node(match, extr_options);
+
+    if (options.gumtree_stats) {
+      end = clock_now();
+      duration_tgt = compute_duration();
+      diff_stats->extract_node_tgt_duration.push_back(duration_tgt);
+      diff_stats->extract_node_duration.push_back(duration_src + duration_tgt);
+    }
 
     // Ensure that they were both created.
     NIFTY_ASSERT(src_func, "failed to extract src function");
@@ -330,7 +357,8 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
 
     // Record the pair.
     result.pairs[src_func] = dst_func;
-    result.diff_stats->pairs_heights.emplace_back(match->height);
+    if (options.gumtree_stats)
+      result.diff_stats->pairs_heights.emplace_back(match->height);
 
     /*
     { // Debug print
