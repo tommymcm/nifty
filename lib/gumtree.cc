@@ -24,6 +24,15 @@ using namespace std::chrono;
 
 namespace nifty {
 
+// ====---- GumNode auxillary functions ----====//
+void get_instruction_gumnodes(llvm::DenseSet<GumNode *> *nodes, GumNode *node){
+  if(node->is_instr)
+    nodes->insert(node);
+
+  for(GumNode *child: node->children){
+    get_instruction_gumnodes(nodes, child);
+  }
+}
 // ====---- Hash ----==== //
 static const uint64_t SMALL_PRIME = 31;
 
@@ -455,7 +464,6 @@ static GumNode *prev_sibling(GumNode *node) {
   if (it == siblings.begin()) return nullptr;
   return *std::prev(it);
 }
-/// @brief Non-zero only if called after running bottom_up
 static double ancestor_dice(GumNode *src, GumNode *can, GumMatches &matches) {
   unsigned matched = 0, total = 0;
   GumNode *s = src->parent;

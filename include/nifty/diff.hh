@@ -47,6 +47,9 @@ struct DiffResult {
 DiffResult diff(llvm::Function *src, llvm::Function *tgt,
                 DiffOptions options = {});
 
+void match_values(GumNode *src,
+                   GumNode *tgt,
+                   llvm::DenseMap<llvm::Value *, llvm::Value *> *vmatch);
 } // namespace nifty
 
 #endif // NIFTY_DIFF_H

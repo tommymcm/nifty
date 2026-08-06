@@ -84,6 +84,8 @@ struct GumTree {
   void compute_lca_map(llvm::SmallVector<GumNode *> dirty, DiffStats *diff_stats);
 };
 
+void get_instruction_gumnodes(llvm::DenseSet<GumNode *> *nodes, GumNode *node);
+
 } // namespace nifty
 
 #endif // NIFTY_GUMTREE_H

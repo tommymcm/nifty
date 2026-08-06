@@ -7,6 +7,7 @@
 #include "nifty/gumtree.hh"
 #include "nifty/regions.hh"
 
+
 #include <chrono>
 #include <iostream>
 
@@ -138,6 +139,7 @@ static void dirty_subtree_sizes(GumNode *src_root,
   }
   return;
 }
+// INDEPENDENT EXTRACTION
 static llvm::Function *extract_node(GumNode *node,
                                     const ExtractOptions &options) {
   if (llvm::Region *region = node->region)
@@ -146,6 +148,44 @@ static llvm::Function *extract_node(GumNode *node,
     std::cerr << "Passed node is not a block\n";
 
   return extract({ node->block }, options);
+}
+
+// @brief Assumes both are of the same GumNode type
+// @brief As of now is very simple, values are matched if their instructions are
+// matched. The return values are also matched
+void match_values(GumNode *src,
+                  GumNode *tgt,
+                  llvm::DenseMap<llvm::Value *, llvm::Value *> *vmatch) {
+  // Get all instructions as GumNodes
+  llvm::DenseSet<GumNode *> instr_nodes(0);
+  get_instruction_gumnodes(&instr_nodes, src);
+
+  for (GumNode *instr_node : instr_nodes) {
+    if (!instr_node->instr->isTerminator() && instr_node->match) 
+      (*vmatch)[instr_node->instr] = instr_node->match->instr;
+  }
+  return;
+}
+
+static std::pair<llvm::Function *, llvm::Function *> extract_node(
+    GumNode *src,
+    GumNode *tgt,
+    llvm::DenseMap<llvm::Value *, llvm::Value *> *vmatchings,
+    const ExtractOptions &options) {
+  // Both must be of the same type of GumNode
+  bool are_regions = src->is_region && tgt->is_region,
+       are_blocks = src->is_block && tgt->is_block,
+       are_instrs = src->is_instr && tgt->is_instr;
+  NIFTY_ASSERT((are_regions || are_blocks || are_instrs)
+                   && (are_regions + are_blocks + are_instrs) == 1,
+               "SRC and TGT nodes do not have the same GumNode type");
+  if (are_instrs)
+    std::cerr
+        << "Passed nodes are instructions; instruction extraction is not implemented yet ";
+  if (are_regions)
+    std::cerr
+        << "Passed nodes are instructions; region extraction is not implemented yet ";
+  return extract({ src->block }, { tgt->block }, vmatchings, options);
 }
 
 static bool same_signature(llvm::Function *src, llvm::Function *dst) {
@@ -295,10 +335,11 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
   // TOREMOVE
   // debugln("Subtree size: ", size[lca]);
   // debugln("Dirty subtree size: ", dirty_size[lca]);
-
+  bool lca_whole_function = true;
   {
     if (current && current != tree.src
         && !(current->parent == tree.src && tree.src->children.size() == 1)) {
+      lca_whole_function = false;
       println("---- LCA IS NOT THE WHOLE FUNCTION ----");
       print("---- LCA IS A");
       if (lca->is_region) {
@@ -319,9 +360,14 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
       println("---- LCA IS THE WHOLE FUNCTION ----");
     }
   }
-
-  // TOREMOVE
-  while (current and current != tree.src) {
+  // Matchings between LLVM operands in SRC and TGT function. Only useful if LCA
+  // is not the whole function.
+  llvm::DenseMap<llvm::Value *, llvm::Value *> vmatchings;
+  if (!lca_whole_function) {
+    match_values(tree.src, tree.dst, &vmatchings);
+  }
+  // Extract nodes only if the LCA is not the whole function.
+  while (!lca_whole_function and current and current != tree.src) {
     GumNode *match = current->match;
     NIFTY_ASSERT(match, "No match for LCA!");
 
@@ -331,7 +377,8 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
     double duration_src, duration_tgt;
     if (options.gumtree_stats)
       start = clock_now();
-
+    
+    
     llvm::Function *src_func = extract_node(current, extr_options);
 
     if (options.gumtree_stats) {
@@ -350,6 +397,11 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
       diff_stats->extract_node_tgt_duration.push_back(duration_tgt);
       diff_stats->extract_node_duration.push_back(duration_src + duration_tgt);
     }
+
+    std::pair<llvm::Function *, llvm::Function *> extracted =
+        extract_node(current, match, &vmatchings, extr_options);
+    src_func = extracted.first;
+    dst_func = extracted.second;
 
     // Ensure that they were both created.
     NIFTY_ASSERT(src_func, "failed to extract src function");
