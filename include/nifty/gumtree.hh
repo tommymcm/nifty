@@ -27,7 +27,6 @@ struct GumNode {
   unsigned height = 0;
   /** Postorder traversal index, for ordering during matching*/
   int postorder_index = 0;
-  
 
   /** Direct parent region, NULL if root */
   GumNode *parent = nullptr;
@@ -76,14 +75,18 @@ struct GumTree {
 
   /** Construct a GumTree by diff'ing the two functions */
 
-  GumTree(llvm::Function *src, llvm::Function *dst,
-          llvm::RegionInfo *src_regions, llvm::RegionInfo *dst_regions,
-          bool refine_top_down = false, double match_threshold = 0.5,
-          DiffStats *diff_stats = new DiffStats(), std::list<GumNode> *gumnodes = {});
+  GumTree(llvm::Function *src,
+          llvm::Function *dst,
+          llvm::RegionInfo *src_regions,
+          llvm::RegionInfo *dst_regions,
+          bool refine_top_down = false,
+          double match_threshold = 0.5,
+          DiffStats *diff_stats = new DiffStats(),
+          std::list<GumNode> *gumnodes = {});
 
-  void compute_lca_map(llvm::SmallVector<GumNode *> dirty, DiffStats *diff_stats);
+  void compute_lca_map(llvm::SmallVector<GumNode *> dirty,
+                       DiffStats *diff_stats);
 };
-
 void get_instruction_gumnodes(llvm::DenseSet<GumNode *> *nodes, GumNode *node);
 
 } // namespace nifty

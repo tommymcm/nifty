@@ -7,7 +7,6 @@
 #include "nifty/gumtree.hh"
 #include "nifty/regions.hh"
 
-
 #include <chrono>
 #include <iostream>
 
@@ -161,7 +160,7 @@ void match_values(GumNode *src,
   get_instruction_gumnodes(&instr_nodes, src);
 
   for (GumNode *instr_node : instr_nodes) {
-    if (!instr_node->instr->isTerminator() && instr_node->match) 
+    if (!instr_node->instr->isTerminator() && instr_node->match)
       (*vmatch)[instr_node->instr] = instr_node->match->instr;
   }
   return;
@@ -176,15 +175,13 @@ static std::pair<llvm::Function *, llvm::Function *> extract_node(
   bool are_regions = src->is_region && tgt->is_region,
        are_blocks = src->is_block && tgt->is_block,
        are_instrs = src->is_instr && tgt->is_instr;
-  NIFTY_ASSERT((are_regions || are_blocks || are_instrs)
-                   && (are_regions + are_blocks + are_instrs) == 1,
+  NIFTY_ASSERT((are_regions + are_blocks + are_instrs) == 1,
                "SRC and TGT nodes do not have the same GumNode type");
   if (are_instrs)
     std::cerr
         << "Passed nodes are instructions; instruction extraction is not implemented yet ";
   if (are_regions)
-    std::cerr
-        << "Passed nodes are instructions; region extraction is not implemented yet ";
+    return extract(src->region, tgt->region, vmatchings, options);
   return extract({ src->block }, { tgt->block }, vmatchings, options);
 }
 
@@ -377,8 +374,7 @@ DiffResult diff(llvm::Function *src, llvm::Function *dst, DiffOptions options) {
     double duration_src, duration_tgt;
     if (options.gumtree_stats)
       start = clock_now();
-    
-    
+
     llvm::Function *src_func = extract_node(current, extr_options);
 
     if (options.gumtree_stats) {

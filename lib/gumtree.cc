@@ -25,11 +25,12 @@ using namespace std::chrono;
 namespace nifty {
 
 // ====---- GumNode auxillary functions ----====//
-void get_instruction_gumnodes(llvm::DenseSet<GumNode *> *nodes, GumNode *node){
-  if(node->is_instr)
+
+void get_instruction_gumnodes(llvm::DenseSet<GumNode *> *nodes, GumNode *node) {
+  if (node->is_instr)
     nodes->insert(node);
 
-  for(GumNode *child: node->children){
+  for (GumNode *child : node->children) {
     get_instruction_gumnodes(nodes, child);
   }
 }
@@ -60,7 +61,8 @@ static uint64_t compute_hash(
     if (auto *cond_br = dyn_cast<llvm::CondBrInst>(pred_term)) {
       if (block == pred_term->getSuccessor(0)) // true branch
         h = combine_hash(h, 1);
-      if (block == pred_term->getSuccessor(1)) h = combine_hash(h, 2);
+      if (block == pred_term->getSuccessor(1))
+        h = combine_hash(h, 2);
     }
   }
 
@@ -90,12 +92,14 @@ static uint64_t compute_hash(
     const llvm::DenseMap<llvm::Value *, uint64_t> &cache,
     llvm::Region *region) {
   auto found = cache.find(region->getEntry());
-  if (found != cache.end()) return found->second;
+  if (found != cache.end())
+    return found->second;
 
   uint64_t h = compute_hash(cache, region->getEntry());
   h = combine_hash(
-      h, region->isSubRegion() ? 2 : 1); // not zero to ensure regions and their
-                                         // entry blocks have different hashes
+      h,
+      region->isSubRegion() ? 2 : 1); // not zero to ensure regions and their
+                                      // entry blocks have different hashes
   return h;
 }
 
@@ -105,7 +109,8 @@ static uint64_t hash_type(llvm::Type *type) {
                               type->getIntegerBitWidth());
   if (type->isFloatingPointTy())
     return llvm::hash_combine(llvm::StringRef("fp"), type->getTypeID());
-  if (type->isPointerTy()) return llvm::hash_combine(llvm::StringRef("ptr"));
+  if (type->isPointerTy())
+    return llvm::hash_combine(llvm::StringRef("ptr"));
   if (type->isArrayTy())
     return llvm::hash_combine(llvm::StringRef("array"),
                               type->getArrayNumElements(),
@@ -119,9 +124,10 @@ static uint64_t hash_type(llvm::Type *type) {
   }
   if (auto *vec_type = dyn_cast<llvm::VectorType>(type)) {
     llvm::ElementCount elem_count = vec_type->getElementCount();
-    return llvm::hash_combine(
-        llvm::StringRef("vec"), elem_count.getKnownMinValue(),
-        elem_count.isScalable(), hash_type(vec_type->getElementType()));
+    return llvm::hash_combine(llvm::StringRef("vec"),
+                              elem_count.getKnownMinValue(),
+                              elem_count.isScalable(),
+                              hash_type(vec_type->getElementType()));
   }
   return llvm::hash_combine(type->getTypeID());
 }
@@ -147,9 +153,11 @@ static uint64_t hash_constant(llvm::Constant *constant) {
 
 static uint64_t hash_value(llvm::DenseMap<llvm::Value *, uint64_t> &cache,
                            llvm::DenseSet<llvm::Value *> &in_progress,
-                           llvm::Value *value, llvm::Region *region) {
+                           llvm::Value *value,
+                           llvm::Region *region) {
   auto found = cache.find(value);
-  if (found != cache.end()) return found->second;
+  if (found != cache.end())
+    return found->second;
 
   // Cycle detected, return a stable placeholder until we can resolve it.
   if (in_progress.contains(value))
@@ -221,22 +229,27 @@ static void hash_instructions(llvm::DenseMap<llvm::Value *, uint64_t> &cache,
 // ====---- GumNode ----==== //
 GumNode::GumNode(llvm::Instruction *instr,
                  const llvm::DenseMap<llvm::Value *, uint64_t> &cache)
-    : instr{instr}, block{nullptr},
-      label{cache.lookup(instr)}, // COCKA2 TODO : is this correct?
-      children{} {
+  : instr{ instr },
+    block{ nullptr },
+    label{ cache.lookup(instr) }, // COCKA2 TODO : is this correct?
+    children{} {
   this->subtree_hash = this->label; // COCKA2 TODO:  WHY?
 }
 
 GumNode::GumNode(llvm::BasicBlock *block,
                  const llvm::DenseMap<llvm::Value *, uint64_t> &cache)
-    : block{block}, label{compute_hash(cache, block)}, children{} {
+  : block{ block },
+    label{ compute_hash(cache, block) },
+    children{} {
   this->subtree_hash = this->label;
 }
 
 GumNode::GumNode(llvm::Region *region,
                  const llvm::DenseMap<llvm::Value *, uint64_t> &cache)
-    : block{region->getEntry()}, region{region},
-      label{compute_hash(cache, region)}, children{} {
+  : block{ region->getEntry() },
+    region{ region },
+    label{ compute_hash(cache, region) },
+    children{} {
   this->subtree_hash = this->label;
 }
 
@@ -281,7 +294,8 @@ static llvm::raw_ostream &node_name(llvm::raw_ostream &os, GumNode *node) {
   return os;
 }
 
-static llvm::raw_ostream &print(llvm::raw_ostream &os, GumNode *node,
+static llvm::raw_ostream &print(llvm::raw_ostream &os,
+                                GumNode *node,
                                 unsigned indent = 0) {
   std::string pad(indent * 2, ' ');
 
@@ -298,7 +312,8 @@ static llvm::raw_ostream &print(llvm::raw_ostream &os, GumNode *node,
 
   // Match status
   if (node->match) {
-    if (node->dirty) os << " matched, dirty => ";
+    if (node->dirty)
+      os << " matched, dirty => ";
     else
       os << " matched, clean => ";
     node_name(os, node->match);
@@ -316,7 +331,8 @@ static llvm::raw_ostream &print(llvm::raw_ostream &os, GumNode *node,
 }
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, GumNode *node) {
-  if (not node) return os << "NULL\n";
+  if (not node)
+    return os << "NULL\n";
   return print(os, node);
 }
 
@@ -379,9 +395,11 @@ static GumNode *build_region(
     llvm::RegionInfo *info = region->getRegionInfo();
     for (llvm::BasicBlock *block : region->blocks()) {
       // Skip subregion entry blocks.
-      if (region->getSubRegionNode(block)) continue;
+      if (region->getSubRegionNode(block))
+        continue;
       // Skip blocks that belong to any subregion other than this one.
-      if (info->getRegionFor(block) != region) continue;
+      if (info->getRegionFor(block) != region)
+        continue;
 
       unsigned index = rpo_index.lookup(block);
       GumNode *child = build_block(block, rpo_index, hashes, gumnodes);
@@ -417,7 +435,8 @@ static GumNode *build_region(
   return node;
 }
 
-GumNode *build_tree(llvm::Function *function, llvm::RegionInfo *regions,
+GumNode *build_tree(llvm::Function *function,
+                    llvm::RegionInfo *regions,
                     std::list<GumNode> *gumnodes) {
   // debugln("==== Build Tree ====");
 
@@ -434,7 +453,9 @@ GumNode *build_tree(llvm::Function *function, llvm::RegionInfo *regions,
   for (auto [index, block] : llvm::enumerate(rpo_traversal))
     rpo_index[block] = index;
 
-  return build_region(regions->getTopLevelRegion(), rpo_index, inst_hashes,
+  return build_region(regions->getTopLevelRegion(),
+                      rpo_index,
+                      inst_hashes,
                       gumnodes);
 }
 
@@ -458,10 +479,12 @@ static void match_subtree(GumNode *src, GumNode *dst, GumMatches &matches) {
 }
 
 static GumNode *prev_sibling(GumNode *node) {
-  if (not node->parent) return nullptr;
+  if (not node->parent)
+    return nullptr;
   auto &siblings = node->parent->children;
   auto it = llvm::find(siblings, node);
-  if (it == siblings.begin()) return nullptr;
+  if (it == siblings.begin())
+    return nullptr;
   return *std::prev(it);
 }
 static double ancestor_dice(GumNode *src, GumNode *can, GumMatches &matches) {
@@ -472,7 +495,8 @@ static double ancestor_dice(GumNode *src, GumNode *can, GumMatches &matches) {
   llvm::DenseSet<GumNode *> src_matches, dst_anc;
   // Collecting matches of src node ancestors
   while (s) {
-    if (s->match) src_matches.insert(s->match);
+    if (s->match)
+      src_matches.insert(s->match);
     // auto it = matches.find(s);
     // if (it != matches.end()) {
     //   src_matches.insert(it->second);
@@ -495,18 +519,21 @@ static double ancestor_dice(GumNode *src, GumNode *can, GumMatches &matches) {
 
   unsigned in_size = in.size(), un_size = un.size();
 
-  if (!un_size) return 0.0;
+  if (!un_size)
+    return 0.0;
   return (double)in_size / un_size;
 
   while (s and c) {
     auto it = matches.find(s);
-    if (it != matches.end() and it->second == c) ++matched;
+    if (it != matches.end() and it->second == c)
+      ++matched;
     ++total;
 
     s = s->parent;
     c = c->parent;
   }
-  if (total == 0) return 0.0;
+  if (total == 0)
+    return 0.0;
 
   return double(matched) / total;
 }
@@ -524,7 +551,8 @@ static GumNode *best_candidate(GumNode *src,
     // This is the strongest signal, same position in tree
     if (src->parent and can->parent) {
       auto it = matches.find(src->parent);
-      if (it != matches.end() and it->second == can->parent) score += 2.0;
+      if (it != matches.end() and it->second == can->parent)
+        score += 2.0;
     }
 
     // Signal 2: left sibling is already matched to src's left sibling
@@ -533,7 +561,8 @@ static GumNode *best_candidate(GumNode *src,
             *can_prev_sibling = prev_sibling(can);
     if (src_prev_sibling and can_prev_sibling) {
       auto it = matches.find(src_prev_sibling);
-      if (it != matches.end() and it->second == can_prev_sibling) score += 1.0;
+      if (it != matches.end() and it->second == can_prev_sibling)
+        score += 1.0;
     }
 
     // Signal 3: dice similarity of already-matched ancestors
@@ -553,65 +582,70 @@ static GumNode *best_candidate(GumNode *src,
       // Instruction type 1 : Terminators
       if (s->isTerminator()) {
         switch (s_code) {
-        case llvm::Instruction::UncondBr:
-          // COCKA2 TODO:See if the hashes of the blocks they are branching to
-          // are the same
+          case llvm::Instruction::UncondBr:
+            // COCKA2 TODO:See if the hashes of the blocks they are branching to
+            // are the same
 
-          // Compare syntactic equality of blocks being branched on
-          {
-            llvm::BasicBlock *s_br_block = s->getSuccessor(0),
-                             *c_br_block = c->getSuccessor(0);
-            if (s_br_block->hasName() && c_br_block->hasName() &&
-                s_br_block->getName().equals_insensitive(c_br_block->getName()))
+            // Compare syntactic equality of blocks being branched on
+            {
+              llvm::BasicBlock *s_br_block = s->getSuccessor(0),
+                               *c_br_block = c->getSuccessor(0);
+              if (s_br_block->hasName() && c_br_block->hasName()
+                  && s_br_block->getName().equals_insensitive(
+                      c_br_block->getName()))
+                score += instr_score;
+
+              instr_score /= 2;
+            }
+
+            break;
+          case llvm::Instruction::CondBr: {
+            llvm::CondBrInst *s_cast = llvm::dyn_cast<llvm::CondBrInst>(s);
+            llvm::CondBrInst *c_cast = llvm::dyn_cast<llvm::CondBrInst>(c);
+            llvm::Value *s_cond = s_cast->getCondition(),
+                        *c_cond = c_cast->getCondition();
+            if (s_cond->hasName() && c_cond->hasName()
+                && !s_cond->getName().compare(c_cond->getName()))
               score += instr_score;
-
             instr_score /= 2;
-          }
+            // Blocks branched to are syntactically equal
+            llvm::BasicBlock *s_block_1 = s_cast->getSuccessor(0),
+                             *s_block_2 = s_cast->getSuccessor(1),
+                             *c_block_1 = c_cast->getSuccessor(0),
+                             *c_block_2 = c_cast->getSuccessor(1);
 
-          break;
-        case llvm::Instruction::CondBr: {
-          llvm::CondBrInst *s_cast = llvm::dyn_cast<llvm::CondBrInst>(s);
-          llvm::CondBrInst *c_cast = llvm::dyn_cast<llvm::CondBrInst>(c);
-          llvm::Value *s_cond = s_cast->getCondition(),
-                      *c_cond = c_cast->getCondition();
-          if (s_cond->hasName() && c_cond->hasName() &&
-              !s_cond->getName().compare(c_cond->getName()))
-            score += instr_score;
-          instr_score /= 2;
-          // Blocks branched to are syntactically equal
-          llvm::BasicBlock *s_block_1 = s_cast->getSuccessor(0),
-                           *s_block_2 = s_cast->getSuccessor(1),
-                           *c_block_1 = c_cast->getSuccessor(0),
-                           *c_block_2 = c_cast->getSuccessor(1);
+            // First src block == first can block, and vice versa
 
-          // First src block == first can block, and vice versa
+            if (s_block_1->hasName() && c_block_1->hasName()
+                && s_block_1->getName().equals_insensitive(
+                    c_block_1->getName()))
+              score += instr_score / 2.0;
+            if (s_block_2->hasName() && c_block_2->hasName()
+                && s_block_2->getName().equals_insensitive(
+                    c_block_2->getName()))
+              score += instr_score / 2.0;
+            instr_score /= 2;
 
-          if (s_block_1->hasName() && c_block_1->hasName() &&
-              s_block_1->getName().equals_insensitive(c_block_1->getName()))
-            score += instr_score / 2.0;
-          if (s_block_2->hasName() && c_block_2->hasName() &&
-              s_block_2->getName().equals_insensitive(c_block_2->getName()))
-            score += instr_score / 2.0;
-          instr_score /= 2;
+            // First src block == second can block, and vice versa
+            if (s_block_1->hasName() && c_block_2->hasName()
+                && s_block_1->getName().equals_insensitive(
+                    c_block_2->getName()))
+              score += instr_score / 2.0;
+            if (s_block_2->hasName() && c_block_1->hasName()
+                && s_block_2->getName().equals_insensitive(
+                    c_block_1->getName()))
+              score += instr_score / 2.0;
+            instr_score /= 2;
 
-          // First src block == second can block, and vice versa
-          if (s_block_1->hasName() && c_block_2->hasName() &&
-              s_block_1->getName().equals_insensitive(c_block_2->getName()))
-            score += instr_score / 2.0;
-          if (s_block_2->hasName() && c_block_1->hasName() &&
-              s_block_2->getName().equals_insensitive(c_block_1->getName()))
-            score += instr_score / 2.0;
-          instr_score /= 2;
-
-        } break;
-        case llvm::Instruction::Ret:
-          std::cout << s->getOpcodeName()
-                    << " instruction is not handled in best_candidate\n";
-          break;
-        default:
-          std::cout << s->getOpcodeName()
-                    << " instruction is not handled in best_candidate\n";
-          break;
+          } break;
+          case llvm::Instruction::Ret:
+            std::cout << s->getOpcodeName()
+                      << " instruction is not handled in best_candidate\n";
+            break;
+          default:
+            std::cout << s->getOpcodeName()
+                      << " instruction is not handled in best_candidate\n";
+            break;
         }
       }
     }
@@ -622,7 +656,8 @@ static GumNode *best_candidate(GumNode *src,
   }
 
   // If candidate had a positive score, return it.
-  if (best_score > 0.0) return best;
+  if (best_score > 0.0)
+    return best;
 
   // Otherwise, return NULL to try smaller subtrees.
   return nullptr;
@@ -687,7 +722,8 @@ static void top_down(GumNode *src, GumNode *dst, GumMatches &matches) {
       }
       bool subtree_matching = false;
       auto it = dst_by_subtree_hash.find(s->subtree_hash);
-      if (it != dst_by_subtree_hash.end()) subtree_matching = true;
+      if (it != dst_by_subtree_hash.end())
+        subtree_matching = true;
       if (subtree_matching) {
 
         auto &candidates = it->second;
@@ -783,7 +819,8 @@ static llvm::SmallVector<GumNode *> descendants(GumNode *node) {
 static bool is_descendant(GumNode *node, GumNode *root) {
   GumNode *cur = node->parent;
   while (cur) {
-    if (cur == root) return true;
+    if (cur == root)
+      return true;
     cur = cur->parent;
   }
   return false;
@@ -794,25 +831,30 @@ static double dice(GumNode *src, GumNode *dst, const GumMatches &matches) {
                                dst_descendants = descendants(dst);
 
   unsigned total = src_descendants.size() + dst_descendants.size();
-  if (total == 0) return 0.0;
+  if (total == 0)
+    return 0.0;
 
   unsigned common = 0;
   for (auto *desc : src_descendants) {
     auto it = matches.find(desc);
     if (it != matches.end())
-      if (is_descendant(it->second, dst)) ++common;
+      if (is_descendant(it->second, dst))
+        ++common;
   }
   return 2.0 * common / total;
 }
 
-static void bottom_up(GumNode *src, GumNode *dst, GumMatches &matches,
+static void bottom_up(GumNode *src,
+                      GumNode *dst,
+                      GumMatches &matches,
                       bool refine_top_down = false,
                       double dice_threshold = 0.5) {
   // debugln("==== Bottom-Up ====");
 
   for (GumNode *s : src->postorder()) {
     // Already matched.
-    if (s->match) continue;
+    if (s->match)
+      continue;
 
     bool s_is_leaf = s->children.empty();
 
@@ -822,7 +864,8 @@ static void bottom_up(GumNode *src, GumNode *dst, GumMatches &matches,
 
     for (GumNode *d : dst->postorder()) {
       // Already matched.
-      if (d->match) continue;
+      if (d->match)
+        continue;
       // Local information does not match.
       double d_dice = 0.0;
       // Internal nodes match on dice threshold.
@@ -840,14 +883,16 @@ static void bottom_up(GumNode *src, GumNode *dst, GumMatches &matches,
       s->match = best;
 
       // Optionally, recover any missed subtree matches.
-      if (refine_top_down) top_down(s, best, matches);
+      if (refine_top_down)
+        top_down(s, best, matches);
     }
   }
 }
 
 static void match_instructions(GumNode *src, GumMatches &matches) {
   // Instruction
-  if (src->is_instr) return;
+  if (src->is_instr)
+    return;
 
   if (!src->is_block) {
     if (src->is_region) {
@@ -860,17 +905,21 @@ static void match_instructions(GumNode *src, GumMatches &matches) {
   }
 
   // Block
-  if (!src->match) return;
+  if (!src->match)
+    return;
 
   GumNode *match = src->match;
   // COCKA2 TODO: as of now only match instructions in case their count is the
   // same
 
-  if (src->block->size() != match->block->size()) return;
+  if (src->block->size() != match->block->size())
+    return;
   for (llvm::SmallVector<GumNode *>::iterator
            src_it = src->children.begin(),
-           match_it = match->children.begin(), src_end = src->children.end();
-       src_it != src_end; src_it++, match_it++) {
+           match_it = match->children.begin(),
+           src_end = src->children.end();
+       src_it != src_end;
+       src_it++, match_it++) {
     GumNode *src_node = *src_it, *match_node = *match_it;
     llvm::Instruction *src_instr = src_node->instr,
                       *match_instr = match_node->instr;
@@ -884,11 +933,15 @@ static void match_instructions(GumNode *src, GumMatches &matches) {
 }
 
 // ====---- GumTree ----==== //
-GumTree::GumTree(llvm::Function *src, llvm::Function *dst,
-                 llvm::RegionInfo *src_regions, llvm::RegionInfo *dst_regions,
-                 bool refine_top_down, double match_threshold,
-                 DiffStats *diff_stats, std::list<GumNode> *gumnodes)
-    : matches{} {
+GumTree::GumTree(llvm::Function *src,
+                 llvm::Function *dst,
+                 llvm::RegionInfo *src_regions,
+                 llvm::RegionInfo *dst_regions,
+                 bool refine_top_down,
+                 double match_threshold,
+                 DiffStats *diff_stats,
+                 std::list<GumNode> *gumnodes)
+  : matches{} {
   // To prevent any redeclaration/no declaration errors
   auto start = high_resolution_clock::now();
   auto end = high_resolution_clock::now();
@@ -924,7 +977,10 @@ GumTree::GumTree(llvm::Function *src, llvm::Function *dst,
 
   { // COCKA2 TODO: also  measures calling refine_top_down, that one must be
     // separate
-    bottom_up(this->src, this->dst, this->matches, refine_top_down,
+    bottom_up(this->src,
+              this->dst,
+              this->matches,
+              refine_top_down,
               match_threshold);
   }
   end = high_resolution_clock::now();
@@ -932,26 +988,29 @@ GumTree::GumTree(llvm::Function *src, llvm::Function *dst,
   duration = duration_cast<microseconds>(end - start).count() / 1000000.0;
 
   diff_stats->bottom_up_duration = duration;
-  if (!refine_top_down) diff_stats->refine_top_down_duration = 0.0;
+  if (!refine_top_down)
+    diff_stats->refine_top_down_duration = 0.0;
   // COCKA2 TODO: record the time taken in perf
   match_instructions(this->src, this->matches);
 
-  diff_stats->gum_tree_duration = diff_stats->top_down_duration +
-                                  diff_stats->bottom_up_duration +
-                                  diff_stats->refine_top_down_duration;
+  diff_stats->gum_tree_duration = diff_stats->top_down_duration
+                                  + diff_stats->bottom_up_duration
+                                  + diff_stats->refine_top_down_duration;
 }
 void GumTree::compute_lca_map(llvm::SmallVector<GumNode *> dirty,
                               DiffStats *diff_stats) {
   for (auto *curr : dirty) {
     // GumNode cannot be verified if it is unmatched
-    if (!curr->match) curr = curr->parent;
+    if (!curr->match)
+      curr = curr->parent;
     while (curr) {
       unsigned height = curr->height + 1;
       if (!lca_map.contains(height)) {
         lca_map[height] = llvm::DenseSet<GumNode *>();
         lca_map_count[height] = 0;
       }
-      if (!lca_map[height].contains(curr)) lca_map[height].insert(curr);
+      if (!lca_map[height].contains(curr))
+        lca_map[height].insert(curr);
 
       lca_map_count[height] = lca_map[height].size();
 

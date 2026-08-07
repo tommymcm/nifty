@@ -27,6 +27,14 @@ void collect_live(llvm::ArrayRef<llvm::BasicBlock *> blocks,
                   llvm::SetVector<llvm::BasicBlock *> *blockset,
                   llvm::SmallVector<llvm::Value *, 0> *live_in,
                   llvm::SmallVector<llvm::Value *, 0> *live_out);
+
+// REGION COEXTRACTION
+std::pair<llvm::Function *, llvm::Function *> extract(
+    llvm::Region *src,
+    llvm::Region *tgt,
+    llvm::DenseMap<llvm::Value *, llvm::Value *> *vmatchings,
+    ExtractOptions options);
+
 // COEXTRACTION
 std::pair<llvm::Function *, llvm::Function *> extract(
     llvm::ArrayRef<llvm::BasicBlock *> src_blocks,

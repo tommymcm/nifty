@@ -95,7 +95,7 @@ void collect_live(llvm::ArrayRef<llvm::BasicBlock *> blocks,
           // Check if the jump is local.
           local_jump &= blockset->contains(succ_block);
         }
-    
+
         // If the jump is local, skip the use.
         if (local_jump)
           continue;
@@ -128,12 +128,14 @@ void collect_live(llvm::ArrayRef<llvm::BasicBlock *> blocks,
     debugln();
   }
 }
+
 // @brief Assumes that the insertion point is set correctly
 void create_loads(llvm::SetVector<llvm::Value *> *values,
                   llvm::IRBuilder<> *builder,
                   llvm::ValueToValueMapTy *vmap,
                   llvm::Module *module,
-                  llvm::Module *out_module) {
+                  llvm::Module *out_module,
+                  bool is_new) {
   for (llvm::Value *value : *values) {
     // Fetch the type, and skip invalid types.
     auto *type = value->getType();
@@ -177,11 +179,13 @@ void create_loads(llvm::SetVector<llvm::Value *> *values,
         builder->CreateCall(func_callee, {}, value->getName());
 
     // Map the original value to the load.
-    (*vmap)[value] = load_call;
+    if (!is_new)
+      (*vmap)[value] = load_call;
   }
 }
 
 // COEXTRACTION
+
 std::pair<llvm::Function *, llvm::Function *> extract(
     llvm::ArrayRef<llvm::BasicBlock *> src_blocks,
     llvm::ArrayRef<llvm::BasicBlock *> tgt_blocks,
@@ -246,14 +250,12 @@ std::pair<llvm::Function *, llvm::Function *> extract(
       src_live_out.size() == tgt_live_out.size(),
       "SRC and TGT functions have different number of live-out variables!");
 
-
   for (llvm::Value *src_out : src_out_set) {
     llvm::Value *tgt_match = (*vmatchings)[src_out];
     NIFTY_ASSERT(
         (tgt_match != NULL) && tgt_out_set.contains(tgt_match),
         "A live-out in SRC does not have a match among TGT live-outs!");
   }
-
 
   // Determine the output modules
   llvm::Module *src_out_module = options.src_out_module,
@@ -339,24 +341,51 @@ std::pair<llvm::Function *, llvm::Function *> extract(
                &src_builder,
                &src_vmap,
                src_module,
-               src_out_module);
+               src_out_module,
+               false);
   create_loads(&tgt_in_inter,
                &tgt_builder,
                &tgt_vmap,
                tgt_module,
-               tgt_out_module);
+               tgt_out_module,
+               false);
 
   // Go through live-in values in SRC and TGT not in the intersection
   create_loads(&src_in_excl,
                &src_builder,
                &src_vmap,
                src_module,
-               src_out_module);
+               src_out_module,
+               false);
+  // Exclusively SRC live-ins
+  create_loads(&src_in_excl,
+               &src_builder,
+               &src_vmap,
+               src_module,
+               src_out_module,
+               false);
+
+  create_loads(&src_in_excl,
+               &tgt_builder,
+               &tgt_vmap,
+               tgt_module,
+               tgt_out_module,
+               true);
+
+  // Exclusively TGT live-ins
   create_loads(&tgt_in_excl,
                &tgt_builder,
                &tgt_vmap,
                tgt_module,
-               tgt_out_module);
+               tgt_out_module,
+               false);
+
+  create_loads(&tgt_in_excl,
+               &src_builder,
+               &src_vmap,
+               src_module,
+               src_out_module,
+               true);
 
   // Jump into the first block in the array, assumed to be the single-entry.
   src_builder.CreateBr(src_first_block);
@@ -810,6 +839,45 @@ std::pair<llvm::Function *, llvm::Function *> extract(
   return std::pair<llvm::Function *, llvm::Function *>(src_out_function,
                                                        tgt_out_function);
 }
+
+// REGION COEXTRACTION
+std::pair<llvm::Function *, llvm::Function *> extract(
+    llvm::Region *src,
+    llvm::Region *tgt,
+    llvm::DenseMap<llvm::Value *, llvm::Value *> *vmatchings,
+    ExtractOptions options) {
+  // Construct the basic block array for extraction.
+  llvm::SmallVector<llvm::BasicBlock *, 0> src_blocks, tgt_blocks;
+
+  // The first element in the array MUST be the entry block.
+  llvm::BasicBlock *src_entry_block = src->getEntry();
+  NIFTY_ASSERT(src_entry_block, "Could not find SRC single-entry block");
+  src_blocks.push_back(src_entry_block);
+
+  llvm::BasicBlock *tgt_entry_block = tgt->getEntry();
+  NIFTY_ASSERT(tgt_entry_block, "Could not find SRC single-entry block");
+  tgt_blocks.push_back(tgt_entry_block);
+
+  // Append all other blocks.
+  for (llvm::BasicBlock *block : src->blocks()) {
+    // Skip the entry block, since it's already been added.
+    if (block == src_entry_block)
+      continue;
+
+    src_blocks.push_back(block);
+  }
+  for (llvm::BasicBlock *block : tgt->blocks()) {
+    // Skip the entry block, since it's already been added.
+    if (block == tgt_entry_block)
+      continue;
+
+    tgt_blocks.push_back(block);
+  }
+
+  // Call into the extract helper.
+  return extract(src_blocks, tgt_blocks, vmatchings, options);
+}
+
 // INDEPENDENT EXTRACTION
 llvm::Function *extract(llvm::ArrayRef<llvm::BasicBlock *> blocks,
                         ExtractOptions options) {
